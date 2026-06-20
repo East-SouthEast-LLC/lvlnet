@@ -1,0 +1,1784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LvlNet — Level Network Reduction</title>
+<style>
+  :root {
+    --bg:       #0f1117;
+    --surface:  #181c27;
+    --panel:    #1e2235;
+    --border:   #2c3150;
+    --accent:   #4a9eff;
+    --accent2:  #f0a500;
+    --good:     #3dba6f;
+    --bad:      #e05252;
+    --check:    #e0a030;
+    --text:     #d4d8e8;
+    --muted:    #6b7399;
+    --mono:     'JetBrains Mono', 'Consolas', 'Courier New', monospace;
+    --sans:     'Inter', system-ui, sans-serif;
+    --row-hover:#252a40;
+    --selected: #1a2a4a;
+    --sel-border:#4a9eff;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 13px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── TOP BAR ── */
+  #topbar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 16px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
+    z-index: 100;
+  }
+  #topbar .brand {
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 0.05em;
+    margin-right: 8px;
+  }
+  #topbar .project-name {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    flex: 1;
+  }
+  #topbar .project-name span { color: var(--text); }
+
+  .tb-btn {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 12px;
+    font-family: var(--sans);
+    padding: 4px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .tb-btn:hover { border-color: var(--accent); background: #252a40; }
+  .tb-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .tb-btn.primary:hover { background: #3a8eef; }
+  .tb-btn.danger { border-color: var(--bad); color: var(--bad); }
+  .tb-btn.danger:hover { background: #2a1515; }
+
+  #status-pill {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: #1a2a1a;
+    color: var(--good);
+    border: 1px solid #2a4a2a;
+  }
+
+  /* ── MAIN LAYOUT ── */
+  #main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    gap: 0;
+  }
+
+  .panel {
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .panel:last-child { border-right: none; }
+
+  #panel-entry  { width: 380px; flex-shrink: 0; }
+  #panel-network { flex: 1; min-width: 0; }
+  #panel-points { width: 420px; flex-shrink: 0; }
+
+  .panel-header {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    background: var(--surface);
+  }
+  .panel-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    flex: 1;
+  }
+  .panel-actions { display: flex; gap: 6px; }
+
+  .panel-body {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  .panel-body::-webkit-scrollbar { width: 6px; }
+  .panel-body::-webkit-scrollbar-track { background: transparent; }
+  .panel-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ── ENTRY PANEL ── */
+  #run-list {
+    border-bottom: 1px solid var(--border);
+    max-height: 140px;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+
+  .run-item {
+    padding: 7px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #151825;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .run-item:hover { background: var(--row-hover); }
+  .run-item.active { background: var(--selected); border-left: 2px solid var(--accent); }
+  .run-item .run-name { font-family: var(--mono); font-size: 12px; flex: 1; }
+  .run-item .run-date { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+  .run-item .run-shots { font-size: 10px; color: var(--muted); }
+
+  #shot-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0;
+  }
+  #shot-area::-webkit-scrollbar { width: 6px; }
+  #shot-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .shot-row {
+    border-bottom: 1px solid #151825;
+    padding: 6px 10px;
+    cursor: pointer;
+    position: relative;
+  }
+  .shot-row:hover { background: var(--row-hover); }
+  .shot-row.selected { background: var(--selected); border-left: 2px solid var(--sel-border); }
+
+  .shot-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 3px;
+  }
+  .shot-type {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 3px;
+    min-width: 28px;
+    text-align: center;
+  }
+  .type-BS  { background: #1a2a4a; color: #7ab8ff; border: 1px solid #2a3a5a; }
+  .type-FS  { background: #1a3a1a; color: #7adfa0; border: 1px solid #2a4a2a; }
+  .type-SS  { background: #2a2a1a; color: #d4c070; border: 1px solid #3a3a2a; }
+  .type-TP  { background: #2a1a2a; color: #c07ad4; border: 1px solid #3a2a3a; }
+  .type-BM  { background: #3a1a1a; color: #ff9060; border: 1px solid #4a2a2a; }
+
+  .shot-ptid {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    flex: 1;
+  }
+  .shot-flag {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .flag-GOOD  { color: var(--good); }
+  .flag-BAD   { color: var(--bad); }
+  .flag-CHECK { color: var(--check); }
+
+  .shot-wires {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .wire-val { color: var(--text); }
+  .shot-computed {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent2);
+    margin-top: 2px;
+  }
+  .shot-desc {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 1px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .interval-warn { color: var(--check); font-size: 10px; margin-top: 2px; font-family: var(--mono); }
+  .interval-bad  { color: var(--bad);   font-size: 10px; margin-top: 2px; font-family: var(--mono); }
+
+  /* ── ADD SHOT FORM ── */
+  #add-shot-panel {
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    padding: 10px;
+    flex-shrink: 0;
+  }
+  .form-row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
+  .form-row label { font-size: 11px; color: var(--muted); min-width: 32px; }
+
+  input, select, textarea {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 4px 7px;
+    border-radius: 3px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  input[type=number] { -moz-appearance: textfield; }
+  input[type=number]::-webkit-inner-spin-button { display: none; }
+
+  .wire-inputs { display: flex; gap: 4px; }
+  .wire-inputs input { width: 62px; }
+  .wire-inputs .wire-label { font-size: 10px; color: var(--muted); text-align: center; font-family: var(--mono); }
+  .wire-col { display: flex; flex-direction: column; gap: 2px; }
+
+  select { cursor: pointer; }
+  select option { background: var(--surface); }
+
+  .computed-preview {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent2);
+    padding: 3px 6px;
+    background: #1a1800;
+    border: 1px solid #2a2800;
+    border-radius: 3px;
+    min-height: 22px;
+  }
+
+  /* ── NETWORK PANEL ── */
+  #network-svg-wrap {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+  }
+  #network-svg {
+    width: 100%;
+    height: 100%;
+    cursor: grab;
+    user-select: none;
+  }
+  #network-svg:active { cursor: grabbing; }
+
+  #network-controls {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 4px;
+  }
+
+  .net-info {
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    background: rgba(15,17,23,0.8);
+    padding: 4px 8px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+  }
+
+  /* ── POINTS PANEL ── */
+  .pts-filter {
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .pts-filter input { flex: 1; font-size: 12px; }
+
+  .pt-row {
+    padding: 6px 10px;
+    border-bottom: 1px solid #151825;
+    cursor: pointer;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 4px;
+  }
+  .pt-row:hover { background: var(--row-hover); }
+  .pt-row.selected { background: var(--selected); border-left: 2px solid var(--sel-border); }
+
+  .pt-id {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .pt-elev {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent2);
+    text-align: right;
+  }
+  .pt-elev-adj {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--good);
+    text-align: right;
+  }
+  .pt-desc {
+    font-size: 11px;
+    color: var(--muted);
+    grid-column: 1/-1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .pt-meta {
+    font-size: 10px;
+    color: #444a66;
+    grid-column: 1/-1;
+    font-family: var(--mono);
+    display: flex;
+    gap: 8px;
+  }
+  .pt-constrained { color: var(--accent2); }
+
+  /* ── MODALS ── */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.hidden { display: none; }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    min-width: 440px;
+    max-width: 600px;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+  }
+  .modal h2 {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 16px;
+    letter-spacing: 0.05em;
+  }
+  .modal-row { margin-bottom: 12px; }
+  .modal-row label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .modal-row input, .modal-row select, .modal-row textarea {
+    width: 100%;
+  }
+  .modal-row textarea { resize: vertical; min-height: 60px; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+
+  .section-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 6px 10px 3px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+
+  /* ── CLOSURE SUMMARY ── */
+  #closure-bar {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 4px 16px;
+    display: flex;
+    gap: 20px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    flex-shrink: 0;
+    align-items: center;
+  }
+  #closure-bar span { color: var(--text); }
+  #closure-bar .good { color: var(--good); }
+  #closure-bar .bad  { color: var(--bad); }
+
+  .empty-state {
+    padding: 32px 16px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.8;
+  }
+  .empty-state .big { font-size: 28px; margin-bottom: 8px; }
+
+  /* tab strip for shot form */
+  .tab-strip {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 8px;
+  }
+  .tab-btn {
+    padding: 4px 10px;
+    font-size: 11px;
+    font-family: var(--mono);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    background: none;
+    border-top: none; border-left: none; border-right: none;
+  }
+  .tab-btn.active { border-bottom-color: var(--accent); color: var(--accent); }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <div class="brand">LVLNET</div>
+  <div class="project-name">Project: <span id="proj-name-display">Untitled</span></div>
+  <button class="tb-btn" onclick="showProjectModal()">⚙ Project</button>
+  <button class="tb-btn" onclick="newRun()">+ Run</button>
+  <button class="tb-btn primary" onclick="saveFile()">⬇ Save .lvlnet</button>
+  <button class="tb-btn" onclick="loadFile()">⬆ Load .lvlnet</button>
+  <button class="tb-btn" onclick="runAdjustment()">⟳ Adjust</button>
+  <div id="status-pill">READY</div>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+
+  <!-- LEFT: ENTRY -->
+  <div class="panel" id="panel-entry">
+    <div class="panel-header">
+      <div class="panel-title">Runs &amp; Shots</div>
+      <div class="panel-actions">
+        <button class="tb-btn" onclick="newRun()" style="font-size:11px;padding:2px 8px;">+ Run</button>
+      </div>
+    </div>
+
+    <div id="run-list"></div>
+
+    <div id="shot-area">
+      <div class="empty-state" id="shot-empty">
+        <div class="big">↑</div>
+        Create or select a run above,<br>then add shots below.
+      </div>
+      <div id="shot-list"></div>
+    </div>
+
+    <div id="add-shot-panel">
+      <div class="tab-strip">
+        <button class="tab-btn active" data-tab="3wire" onclick="switchShotTab('3wire',this)">3-Wire</button>
+        <button class="tab-btn" data-tab="1wire" onclick="switchShotTab('1wire',this)">1-Wire</button>
+        <button class="tab-btn" data-tab="bm" onclick="switchShotTab('bm',this)">Set BM</button>
+      </div>
+
+      <!-- 3-Wire tab -->
+      <div id="tab-3wire">
+        <div class="form-row">
+          <label>Type</label>
+          <select id="s-type" style="width:60px">
+            <option>BS</option>
+            <option>FS</option>
+            <option>SS</option>
+            <option>TP</option>
+          </select>
+          <label style="margin-left:6px">Dist</label>
+          <input type="number" id="s-dist" placeholder="ft" style="width:60px" step="0.1">
+          <label style="margin-left:6px">Flag</label>
+          <select id="s-flag" style="width:68px">
+            <option value="">—</option>
+            <option>GOOD</option>
+            <option>BAD</option>
+            <option>CHECK</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Wires</label>
+          <div class="wire-inputs">
+            <div class="wire-col">
+              <div class="wire-label">HI</div>
+              <input type="number" id="s-hi" placeholder="hi" step="0.001" style="width:70px" oninput="previewCompute()">
+            </div>
+            <div class="wire-col">
+              <div class="wire-label">MID</div>
+              <input type="number" id="s-mid" placeholder="mid" step="0.001" style="width:70px" oninput="previewCompute()">
+            </div>
+            <div class="wire-col">
+              <div class="wire-label">LO</div>
+              <input type="number" id="s-lo" placeholder="lo" step="0.001" style="width:70px" oninput="previewCompute()">
+            </div>
+          </div>
+        </div>
+        <div class="form-row">
+          <label>Pt ID</label>
+          <input type="text" id="s-ptid" placeholder="e.g. EU123" style="width:90px">
+          <label style="margin-left:6px">Desc</label>
+          <input type="text" id="s-desc" placeholder="description" style="flex:1">
+        </div>
+        <div class="form-row">
+          <div class="computed-preview" id="preview-out">—</div>
+          <button class="tb-btn primary" style="margin-left:auto" onclick="addShot()">Add Shot</button>
+        </div>
+      </div>
+
+      <!-- 1-Wire tab -->
+      <div id="tab-1wire" class="hidden">
+        <div class="form-row">
+          <label>Type</label>
+          <select id="s1-type" style="width:60px">
+            <option>BS</option>
+            <option>FS</option>
+            <option>SS</option>
+            <option>TP</option>
+          </select>
+          <label style="margin-left:6px">Dist</label>
+          <input type="number" id="s1-dist" placeholder="ft" style="width:60px" step="0.1">
+          <label style="margin-left:6px">Flag</label>
+          <select id="s1-flag" style="width:68px">
+            <option value="">—</option>
+            <option>GOOD</option>
+            <option>BAD</option>
+            <option>CHECK</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Rod</label>
+          <input type="number" id="s1-mid" placeholder="reading" step="0.001" style="width:90px">
+          <label style="margin-left:6px">Pt ID</label>
+          <input type="text" id="s1-ptid" placeholder="e.g. EU123" style="width:80px">
+        </div>
+        <div class="form-row">
+          <label>Desc</label>
+          <input type="text" id="s1-desc" placeholder="description" style="flex:1">
+          <button class="tb-btn primary" style="margin-left:6px" onclick="add1WireShot()">Add</button>
+        </div>
+      </div>
+
+      <!-- Set BM tab -->
+      <div id="tab-bm" class="hidden">
+        <div class="form-row">
+          <label>Pt ID</label>
+          <input type="text" id="bm-id" placeholder="e.g. NAIL UP 50/1S" style="flex:1">
+        </div>
+        <div class="form-row">
+          <label>Elev</label>
+          <input type="number" id="bm-elev" placeholder="NAVD88" step="0.001" style="width:110px">
+          <label style="margin-left:6px">Source</label>
+          <select id="bm-source" style="flex:1">
+            <option>NAVD88 published</option>
+            <option>GPS+LS</option>
+            <option>Leveled</option>
+            <option>Estimated</option>
+            <option>2009 run</option>
+            <option>Legacy</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Desc</label>
+          <input type="text" id="bm-desc" placeholder="Monument description" style="flex:1">
+        </div>
+        <div class="form-row">
+          <label>Coord</label>
+          <input type="text" id="bm-lat" placeholder="lat" style="width:100px">
+          <input type="text" id="bm-lon" placeholder="lon" style="width:110px; margin-left:4px">
+        </div>
+        <div class="form-row">
+          <label>Vel</label>
+          <input type="number" id="bm-vel" placeholder="mm/yr CORS" step="0.01" style="width:100px">
+          <label style="margin-left:6px;font-size:10px;color:var(--muted)">mm/yr vertical</label>
+          <button class="tb-btn primary" style="margin-left:auto" onclick="addBM()">Set BM</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTER: NETWORK -->
+  <div class="panel" id="panel-network">
+    <div class="panel-header">
+      <div class="panel-title">Network Diagram</div>
+      <div class="panel-actions">
+        <button class="tb-btn" style="font-size:11px;padding:2px 8px" onclick="resetView()">Reset View</button>
+        <button class="tb-btn" style="font-size:11px;padding:2px 8px" onclick="autoLayout()">Auto Layout</button>
+      </div>
+    </div>
+    <div id="network-svg-wrap">
+      <svg id="network-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div id="network-controls">
+        <button class="tb-btn" style="font-size:14px;padding:2px 8px;line-height:1" onclick="zoomNet(1.2)">+</button>
+        <button class="tb-btn" style="font-size:14px;padding:2px 8px;line-height:1" onclick="zoomNet(0.83)">−</button>
+      </div>
+      <div class="net-info" id="net-info">No data — add runs to see network</div>
+    </div>
+  </div>
+
+  <!-- RIGHT: POINTS -->
+  <div class="panel" id="panel-points">
+    <div class="panel-header">
+      <div class="panel-title">All Points</div>
+      <div class="panel-actions">
+        <button class="tb-btn" style="font-size:11px;padding:2px 8px" onclick="exportCSV()">CSV</button>
+      </div>
+    </div>
+    <div class="pts-filter">
+      <input type="text" id="pt-filter" placeholder="Filter by ID or description…" oninput="renderPoints()">
+      <select id="pt-sort" onchange="renderPoints()" style="font-size:11px;width:100px">
+        <option value="id">Sort: ID</option>
+        <option value="elev">Sort: Elev</option>
+        <option value="run">Sort: Run</option>
+      </select>
+    </div>
+    <div class="panel-body" id="pt-list"></div>
+  </div>
+
+</div>
+
+<!-- CLOSURE BAR -->
+<div id="closure-bar">
+  <span>Shots: <span id="cb-shots">0</span></span>
+  <span>Points: <span id="cb-pts">0</span></span>
+  <span>Runs: <span id="cb-runs">0</span></span>
+  <span id="cb-closure-wrap" style="display:none">Loop closure: <span id="cb-closure" class="good">—</span></span>
+  <span style="margin-left:auto;color:#444a66">LVLNET v0.1 · NAVD88</span>
+</div>
+
+<!-- PROJECT MODAL -->
+<div class="modal-overlay hidden" id="proj-modal">
+  <div class="modal">
+    <h2>PROJECT SETTINGS</h2>
+    <div class="modal-row"><label>Project Name</label><input id="pm-name" type="text"></div>
+    <div class="modal-row"><label>Description</label><textarea id="pm-desc"></textarea></div>
+    <div class="modal-row"><label>Datum</label><input id="pm-datum" type="text" value="NAVD88"></div>
+    <div class="modal-row"><label>Rod Correction (per 100 ft, default −0.0007)</label><input id="pm-rodcorr" type="number" step="0.0001" value="-0.0007"></div>
+    <div class="modal-row"><label>Observer</label><input id="pm-observer" type="text"></div>
+    <div class="modal-actions">
+      <button class="tb-btn" onclick="closeModal('proj-modal')">Cancel</button>
+      <button class="tb-btn primary" onclick="saveProjectSettings()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- NEW RUN MODAL -->
+<div class="modal-overlay hidden" id="run-modal">
+  <div class="modal">
+    <h2>NEW RUN</h2>
+    <div class="modal-row"><label>Run Name</label><input id="rm-name" type="text" placeholder="e.g. Barn Hill Road"></div>
+    <div class="modal-row"><label>Date</label><input id="rm-date" type="date"></div>
+    <div class="modal-row"><label>Observer</label><input id="rm-observer" type="text"></div>
+    <div class="modal-row"><label>Instrument</label><input id="rm-instrument" type="text" placeholder="e.g. DiNi 03"></div>
+    <div class="modal-row"><label>Rod Correction Override (leave blank to use project default)</label><input id="rm-rodcorr" type="number" step="0.0001" placeholder="blank = project default"></div>
+    <div class="modal-row"><label>Notes</label><textarea id="rm-notes"></textarea></div>
+    <div class="modal-actions">
+      <button class="tb-btn" onclick="closeModal('run-modal')">Cancel</button>
+      <button class="tb-btn primary" onclick="createRun()">Create Run</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT SHOT MODAL -->
+<div class="modal-overlay hidden" id="edit-shot-modal">
+  <div class="modal">
+    <h2>EDIT SHOT</h2>
+    <input type="hidden" id="es-run-id">
+    <input type="hidden" id="es-shot-id">
+    <div class="modal-row"><label>Type</label>
+      <select id="es-type">
+        <option>BS</option><option>FS</option><option>SS</option><option>TP</option><option>BM</option>
+      </select>
+    </div>
+    <div class="modal-row"><label>Point ID</label><input id="es-ptid" type="text"></div>
+    <div class="modal-row"><label>Description</label><input id="es-desc" type="text"></div>
+    <div class="modal-row"><label>High Wire</label><input id="es-hi" type="number" step="0.001"></div>
+    <div class="modal-row"><label>Mid Wire (or single reading)</label><input id="es-mid" type="number" step="0.001"></div>
+    <div class="modal-row"><label>Low Wire</label><input id="es-lo" type="number" step="0.001"></div>
+    <div class="modal-row"><label>Distance (ft)</label><input id="es-dist" type="number" step="0.1"></div>
+    <div class="modal-row"><label>Flag</label>
+      <select id="es-flag">
+        <option value="">—</option><option>GOOD</option><option>BAD</option><option>CHECK</option>
+      </select>
+    </div>
+    <div class="modal-row"><label>Note</label><input id="es-note" type="text"></div>
+    <div class="modal-actions">
+      <button class="tb-btn danger" onclick="deleteShot()">Delete Shot</button>
+      <button class="tb-btn" onclick="closeModal('edit-shot-modal')">Cancel</button>
+      <button class="tb-btn primary" onclick="saveEditShot()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT POINT MODAL -->
+<div class="modal-overlay hidden" id="edit-pt-modal">
+  <div class="modal">
+    <h2>EDIT POINT</h2>
+    <input type="hidden" id="ep-orig-id">
+    <div class="modal-row"><label>Point ID / Monument Name</label><input id="ep-id" type="text"></div>
+    <div class="modal-row"><label>Description</label><input id="ep-desc" type="text"></div>
+    <div class="modal-row"><label>Constrained (known BM)</label>
+      <select id="ep-constrained">
+        <option value="false">No</option>
+        <option value="true">Yes — hold elevation</option>
+      </select>
+    </div>
+    <div class="modal-row"><label>Elevation (if constrained)</label><input id="ep-elev" type="number" step="0.001"></div>
+    <div class="modal-row"><label>Elevation Source</label>
+      <select id="ep-source">
+        <option>NAVD88 published</option><option>GPS+LS</option><option>Leveled</option>
+        <option>Estimated</option><option>2009 run</option><option>Legacy</option>
+      </select>
+    </div>
+    <div class="modal-row"><label>Latitude</label><input id="ep-lat" type="text"></div>
+    <div class="modal-row"><label>Longitude</label><input id="ep-lon" type="text"></div>
+    <div class="modal-row"><label>Vertical Velocity mm/yr (CORS)</label><input id="ep-vel" type="number" step="0.01"></div>
+    <div class="modal-row"><label>Notes</label><textarea id="ep-notes"></textarea></div>
+    <div class="modal-actions">
+      <button class="tb-btn" onclick="closeModal('edit-pt-modal')">Cancel</button>
+      <button class="tb-btn primary" onclick="saveEditPoint()">Save</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="file-input" accept=".lvlnet" style="display:none" onchange="handleFileLoad(event)">
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════
+let state = {
+  project: {
+    name: 'Untitled',
+    description: '',
+    datum: 'NAVD88',
+    rod_correction: -0.0007,
+    observer: '',
+    created: new Date().toISOString(),
+    modified: new Date().toISOString()
+  },
+  runs: [],       // [{id, name, date, observer, instrument, rod_correction_override, notes, shots:[]}]
+  points: {},     // {ptid: {id, desc, constrained, elev, elev_source, lat, lon, velocity, notes, aliases:[]}}
+  adjustments: [],
+  _activeRunId: null,
+  _selectedPtId: null,
+  _selectedShotId: null,
+  _shotTab: '3wire'
+};
+
+let netTransform = { x: 0, y: 0, scale: 1 };
+let netDrag = null;
+let nodeDrag = null;
+let nodePositions = {}; // ptid -> {x,y}
+
+// ═══════════════════════════════════════════════════════
+//  UTILITIES
+// ═══════════════════════════════════════════════════════
+function uid() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+}
+
+function rodCorr(run) {
+  const v = run.rod_correction_override;
+  return (v !== null && v !== undefined && v !== '') ? parseFloat(v) : state.project.rod_correction;
+}
+
+function threeWireMean(hi, mid, lo) {
+  if (hi == null || mid == null || lo == null) return null;
+  return (hi + mid + lo) / 3;
+}
+
+function intervalCheck(hi, mid, lo) {
+  if (hi == null || mid == null || lo == null) return null;
+  const d1 = hi - mid;
+  const d2 = mid - lo;
+  return Math.abs(d1 - d2);
+}
+
+function fmt(v, d=3) {
+  if (v == null || isNaN(v)) return '—';
+  return v.toFixed(d);
+}
+
+// ═══════════════════════════════════════════════════════
+//  REDUCTION ENGINE
+// ═══════════════════════════════════════════════════════
+function reduceRun(run) {
+  // Returns array of setup objects with computed elevations
+  // Processes shots in order: BM sets starting elev, BS establishes HI, FS/TP advance, SS are sideshots
+  const rc = rodCorr(run);
+  const results = [];
+  let currentElev = null;
+  let currentHI = null;
+  let bsDistAcc = 0;
+  let fsDistAcc = 0;
+
+  for (const shot of run.shots) {
+    const hi = shot.wires ? shot.wires[0] : null;
+    const mid = shot.wires ? shot.wires[1] : null;
+    const lo = shot.wires ? shot.wires[2] : null;
+    const dist = shot.dist || 0;
+    const corrFactor = 1 + rc * dist / 100;
+    const mean = threeWireMean(hi, mid, lo);
+    const correctedMean = mean != null ? mean * corrFactor : (mid != null ? mid * corrFactor : null);
+    const interval = intervalCheck(hi, mid, lo);
+
+    let computedElev = null;
+    let computedHI = null;
+
+    if (shot.type === 'BM') {
+      const pt = state.points[shot.point_id];
+      if (pt && pt.elev != null) {
+        currentElev = pt.elev;
+      } else if (shot.elev != null) {
+        currentElev = shot.elev;
+      }
+      results.push({ ...shot, mean, correctedMean, interval, elev: currentElev, hi_inst: currentHI });
+      continue;
+    }
+
+    if (shot.type === 'BS') {
+      if (currentElev != null && correctedMean != null) {
+        currentHI = currentElev + correctedMean;
+        computedHI = currentHI;
+      }
+      bsDistAcc += dist;
+      results.push({ ...shot, mean, correctedMean, interval, hi_inst: computedHI, elev: currentElev });
+      continue;
+    }
+
+    if (shot.type === 'FS' || shot.type === 'TP') {
+      if (currentHI != null && correctedMean != null) {
+        computedElev = currentHI - correctedMean;
+        currentElev = computedElev;
+        currentHI = null; // needs new BS
+      }
+      fsDistAcc += dist;
+      results.push({ ...shot, mean, correctedMean, interval, elev: computedElev, hi_inst: null });
+      continue;
+    }
+
+    if (shot.type === 'SS') {
+      if (currentHI != null && correctedMean != null) {
+        computedElev = currentHI - correctedMean;
+      }
+      results.push({ ...shot, mean, correctedMean, interval, elev: computedElev, hi_inst: null });
+      continue;
+    }
+
+    results.push({ ...shot, mean, correctedMean, interval, elev: null, hi_inst: null });
+  }
+
+  return results;
+}
+
+// ═══════════════════════════════════════════════════════
+//  POINT REGISTRY
+// ═══════════════════════════════════════════════════════
+function ensurePoint(ptid, desc) {
+  if (!ptid) return;
+  if (!state.points[ptid]) {
+    state.points[ptid] = {
+      id: ptid,
+      desc: desc || '',
+      constrained: false,
+      elev: null,
+      elev_source: '',
+      lat: null,
+      lon: null,
+      velocity: null,
+      notes: '',
+      aliases: []
+    };
+  } else if (desc && !state.points[ptid].desc) {
+    state.points[ptid].desc = desc;
+  }
+}
+
+function updatePointElevFromRuns() {
+  // For non-constrained points, update best-known elevation from reductions
+  const elevMap = {}; // ptid -> [elev values from all runs]
+
+  for (const run of state.runs) {
+    const reduced = reduceRun(run);
+    for (const r of reduced) {
+      if (r.point_id && r.elev != null && r.flag !== 'BAD') {
+        if (!elevMap[r.point_id]) elevMap[r.point_id] = [];
+        elevMap[r.point_id].push(r.elev);
+      }
+    }
+  }
+
+  for (const [ptid, elevs] of Object.entries(elevMap)) {
+    if (!state.points[ptid]) ensurePoint(ptid, '');
+    if (!state.points[ptid].constrained) {
+      // Use mean of all leveled values (pre-adjustment)
+      state.points[ptid].elev_raw = elevs.reduce((a,b)=>a+b,0)/elevs.length;
+      state.points[ptid].elev_raw_count = elevs.length;
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  LEAST SQUARES ADJUSTMENT (simple loop closure for now)
+// ═══════════════════════════════════════════════════════
+function runAdjustment() {
+  updatePointElevFromRuns();
+
+  // For each run, compute forward closure if it closes back to a known point
+  let summaries = [];
+
+  for (const run of state.runs) {
+    const reduced = reduceRun(run);
+    const shots = reduced.filter(r => r.flag !== 'BAD');
+
+    // Find BM start and any return-to-BM
+    const bmShots = shots.filter(s => s.type === 'BM');
+    if (bmShots.length >= 2) {
+      const start = bmShots[0];
+      const end = bmShots[bmShots.length - 1];
+      if (start.point_id !== end.point_id) continue;
+      const startPt = state.points[start.point_id];
+      if (!startPt || startPt.elev == null) continue;
+
+      // Find last computed elev before the closing BM shot
+      let lastElev = null;
+      for (let i = shots.length - 2; i >= 0; i--) {
+        if (shots[i].elev != null) { lastElev = shots[i].elev; break; }
+      }
+      if (lastElev == null) continue;
+
+      // total dist
+      const totalDist = shots.reduce((a,s) => a + (s.dist||0), 0);
+      const closure = lastElev - startPt.elev;
+      const closurePerMile = totalDist > 0 ? Math.abs(closure) / (totalDist / 5280) : null;
+
+      summaries.push({ run: run.name, closure: closure.toFixed(4), dist_ft: totalDist.toFixed(0), per_mile: closurePerMile ? closurePerMile.toFixed(4) : '—' });
+    }
+  }
+
+  if (summaries.length > 0) {
+    const s = summaries[summaries.length - 1];
+    document.getElementById('cb-closure-wrap').style.display = '';
+    const cl = parseFloat(s.closure);
+    const el = document.getElementById('cb-closure');
+    el.textContent = `${s.closure} ft (run: ${s.run})`;
+    el.className = Math.abs(cl) < 0.05 ? 'good' : 'bad';
+  }
+
+  setStatus(`Adjusted · ${new Date().toLocaleTimeString()}`);
+  renderAll();
+}
+
+// ═══════════════════════════════════════════════════════
+//  RENDER
+// ═══════════════════════════════════════════════════════
+function renderAll() {
+  updatePointElevFromRuns();
+  renderRuns();
+  renderShots();
+  renderPoints();
+  renderNetwork();
+  updateClosureBar();
+}
+
+function renderRuns() {
+  const el = document.getElementById('run-list');
+  if (state.runs.length === 0) {
+    el.innerHTML = '<div class="empty-state" style="padding:12px;font-size:11px">No runs yet. Click + Run.</div>';
+    return;
+  }
+  el.innerHTML = state.runs.map(r => `
+    <div class="run-item ${r.id === state._activeRunId ? 'active' : ''}" onclick="selectRun('${r.id}')">
+      <div class="run-name">${r.name}</div>
+      <div class="run-date">${r.date||''}</div>
+      <div class="run-shots">${r.shots.length} shots</div>
+    </div>
+  `).join('');
+}
+
+function renderShots() {
+  const run = state.runs.find(r => r.id === state._activeRunId);
+  const empty = document.getElementById('shot-empty');
+  const list = document.getElementById('shot-list');
+
+  if (!run) {
+    empty.style.display = '';
+    list.innerHTML = '';
+    return;
+  }
+  empty.style.display = 'none';
+
+  if (run.shots.length === 0) {
+    list.innerHTML = '<div class="empty-state" style="padding:16px;font-size:11px">No shots in this run yet.</div>';
+    return;
+  }
+
+  const reduced = reduceRun(run);
+  let hi_inst = null;
+
+  list.innerHTML = reduced.map((s, i) => {
+    if (s.hi_inst != null) hi_inst = s.hi_inst;
+
+    const mean = s.mean;
+    const icheck = s.interval;
+    const INTERVAL_WARN = 0.003;
+    const INTERVAL_BAD  = 0.010;
+    let intervalHtml = '';
+    if (icheck != null) {
+      if (icheck > INTERVAL_BAD) intervalHtml = `<div class="interval-bad">⚠ interval mismatch ${fmt(icheck,4)}</div>`;
+      else if (icheck > INTERVAL_WARN) intervalHtml = `<div class="interval-warn">△ interval ${fmt(icheck,4)}</div>`;
+    }
+
+    let computed = '';
+    if (s.type === 'BS' && s.hi_inst != null) {
+      computed = `HI = ${fmt(s.hi_inst)}`;
+    } else if ((s.type === 'FS' || s.type === 'TP' || s.type === 'SS') && s.elev != null) {
+      computed = `ELEV = ${fmt(s.elev)}`;
+    } else if (s.type === 'BM' && s.elev != null) {
+      computed = `BM ELEV = ${fmt(s.elev)}`;
+    }
+
+    const flagClass = s.flag ? `flag-${s.flag}` : '';
+
+    return `
+      <div class="shot-row ${s.id === state._selectedShotId ? 'selected' : ''}" onclick="selectShot('${s.id}', '${run.id}')">
+        <div class="shot-header">
+          <span class="shot-type type-${s.type}">${s.type}</span>
+          <span class="shot-ptid">${s.point_id || '—'}</span>
+          ${s.flag ? `<span class="shot-flag ${flagClass}">${s.flag}</span>` : ''}
+        </div>
+        <div class="shot-wires">
+          ${s.wires && s.wires[0] != null ? `<span>↑<span class="wire-val">${fmt(s.wires[0])}</span></span>` : ''}
+          ${s.wires && s.wires[1] != null ? `<span>─<span class="wire-val">${fmt(s.wires[1])}</span></span>` : ''}
+          ${s.wires && s.wires[2] != null ? `<span>↓<span class="wire-val">${fmt(s.wires[2])}</span></span>` : ''}
+          ${mean != null ? `<span>x̄=<span class="wire-val">${fmt(mean)}</span></span>` : ''}
+          ${s.dist ? `<span style="color:#444a66">${fmt(s.dist,1)}ft</span>` : ''}
+        </div>
+        ${computed ? `<div class="shot-computed">${computed}</div>` : ''}
+        ${s.desc ? `<div class="shot-desc">${s.desc}</div>` : ''}
+        ${intervalHtml}
+      </div>
+    `;
+  }).join('');
+}
+
+function renderPoints() {
+  const filter = document.getElementById('pt-filter').value.toLowerCase();
+  const sort   = document.getElementById('pt-sort').value;
+
+  let pts = Object.values(state.points);
+
+  if (filter) {
+    pts = pts.filter(p => p.id.toLowerCase().includes(filter) || (p.desc||'').toLowerCase().includes(filter));
+  }
+
+  if (sort === 'elev') {
+    pts.sort((a,b) => {
+      const ea = a.elev ?? a.elev_raw ?? Infinity;
+      const eb = b.elev ?? b.elev_raw ?? Infinity;
+      return ea - eb;
+    });
+  } else if (sort === 'id') {
+    pts.sort((a,b) => a.id.localeCompare(b.id));
+  }
+
+  const el = document.getElementById('pt-list');
+  if (pts.length === 0) {
+    el.innerHTML = '<div class="empty-state" style="padding:20px;font-size:11px">No points yet.</div>';
+    return;
+  }
+
+  el.innerHTML = pts.map(p => {
+    const rawElev = p.elev ?? p.elev_raw;
+    const adjElev = p.elev_adj;
+    return `
+      <div class="pt-row ${p.id === state._selectedPtId ? 'selected' : ''}" onclick="selectPoint('${p.id}')">
+        <div class="pt-id">${p.id}${p.constrained ? ' ★' : ''}</div>
+        <div class="pt-elev">${rawElev != null ? fmt(rawElev) : '—'}</div>
+        ${adjElev != null ? `<div style="grid-column:2;font-family:var(--mono);font-size:10px;color:var(--good);text-align:right">adj: ${fmt(adjElev)}</div>` : ''}
+        ${p.desc ? `<div class="pt-desc">${p.desc}</div>` : ''}
+        <div class="pt-meta">
+          ${p.constrained ? '<span class="pt-constrained">constrained</span>' : ''}
+          ${p.elev_source ? `<span>${p.elev_source}</span>` : ''}
+          ${p.elev_raw_count > 1 ? `<span>${p.elev_raw_count} obs</span>` : ''}
+          ${p.velocity != null ? `<span>vel ${p.velocity} mm/yr</span>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════
+//  NETWORK DIAGRAM
+// ═══════════════════════════════════════════════════════
+function buildNetworkGraph() {
+  // nodes = points, edges = level run connections between adjacent leveled points
+  const nodes = Object.values(state.points);
+  const edges = [];
+
+  for (const run of state.runs) {
+    const shots = run.shots.filter(s => s.flag !== 'BAD' && s.point_id);
+    const pointSeq = [];
+    for (const s of shots) {
+      if (s.type !== 'SS' && s.point_id) {
+        if (!pointSeq.length || pointSeq[pointSeq.length-1] !== s.point_id) {
+          pointSeq.push(s.point_id);
+        }
+      }
+    }
+    for (let i = 0; i < pointSeq.length - 1; i++) {
+      edges.push({ from: pointSeq[i], to: pointSeq[i+1], run: run.name, runId: run.id });
+    }
+  }
+
+  return { nodes, edges };
+}
+
+function autoLayout() {
+  const { nodes } = buildNetworkGraph();
+  if (nodes.length === 0) return;
+
+  const svg = document.getElementById('network-svg');
+  const W = svg.clientWidth || 800;
+  const H = svg.clientHeight || 500;
+
+  // Force-directed-ish: just do a circle for now, then let user drag
+  const cx = W / 2, cy = H / 2;
+  const r = Math.min(W, H) * 0.35;
+  nodes.forEach((n, i) => {
+    const angle = (2 * Math.PI * i) / nodes.length - Math.PI / 2;
+    if (!nodePositions[n.id]) {
+      nodePositions[n.id] = { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) };
+    }
+  });
+  renderNetwork();
+}
+
+function renderNetwork() {
+  const svg = document.getElementById('network-svg');
+  const { nodes, edges } = buildNetworkGraph();
+
+  if (nodes.length === 0) {
+    svg.innerHTML = '';
+    document.getElementById('net-info').textContent = 'No data — add runs to see network';
+    return;
+  }
+
+  document.getElementById('net-info').textContent = `${nodes.length} points · ${edges.length} connections`;
+
+  // Auto-position new nodes
+  const W = svg.clientWidth || 800;
+  const H = svg.clientHeight || 500;
+  nodes.forEach((n, i) => {
+    if (!nodePositions[n.id]) {
+      const angle = (2 * Math.PI * i) / nodes.length - Math.PI / 2;
+      const r = Math.min(W, H) * 0.35;
+      nodePositions[n.id] = { x: W/2 + r * Math.cos(angle), y: H/2 + r * Math.sin(angle) };
+    }
+  });
+
+  const tx = netTransform.x, ty = netTransform.y, sc = netTransform.scale;
+
+  // Deduplicate edges by pair for display
+  const edgeMap = {};
+  for (const e of edges) {
+    const key = [e.from, e.to].sort().join('||');
+    if (!edgeMap[key]) edgeMap[key] = { ...e, count: 1 };
+    else edgeMap[key].count++;
+  }
+
+  const edgeSvg = Object.values(edgeMap).map(e => {
+    const a = nodePositions[e.from], b = nodePositions[e.to];
+    if (!a || !b) return '';
+    const ax = a.x * sc + tx, ay = a.y * sc + ty;
+    const bx = b.x * sc + tx, by = b.y * sc + ty;
+    const hasLoop = e.count > 1;
+    return `<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}"
+      stroke="${hasLoop ? '#3dba6f' : '#2c3150'}" stroke-width="${hasLoop ? 2 : 1.5}"
+      stroke-dasharray="${hasLoop ? '' : '4,3'}" opacity="0.8"/>`;
+  }).join('');
+
+  const nodeSvg = nodes.map(n => {
+    const pos = nodePositions[n.id];
+    if (!pos) return '';
+    const px = pos.x * sc + tx, py = pos.y * sc + ty;
+    const isSelected = n.id === state._selectedPtId;
+    const isConstrained = n.constrained;
+    const elev = n.elev ?? n.elev_raw;
+    const nodeColor = isSelected ? '#4a9eff' : isConstrained ? '#f0a500' : '#4a5580';
+    const r = isConstrained ? 9 : 7;
+
+    return `
+      <g class="net-node" data-ptid="${n.id}" onclick="selectPoint('${n.id}')" style="cursor:pointer"
+         onmousedown="startNodeDrag(event,'${n.id}')">
+        <circle cx="${px}" cy="${py}" r="${r}" fill="${nodeColor}"
+          stroke="${isSelected ? '#fff' : '#0f1117'}" stroke-width="${isSelected ? 2 : 1}"/>
+        <text x="${px+r+3}" y="${py+4}" font-family="'JetBrains Mono',monospace" font-size="${10*Math.min(sc,1.2)}"
+          fill="${isSelected ? '#fff' : '#d4d8e8'}" pointer-events="none">
+          ${n.id}${elev != null ? ` (${fmt(elev)})` : ''}
+        </text>
+      </g>
+    `;
+  }).join('');
+
+  svg.innerHTML = edgeSvg + nodeSvg;
+}
+
+function resetView() {
+  netTransform = { x: 0, y: 0, scale: 1 };
+  renderNetwork();
+}
+
+function zoomNet(factor) {
+  netTransform.scale *= factor;
+  netTransform.scale = Math.max(0.2, Math.min(5, netTransform.scale));
+  renderNetwork();
+}
+
+// SVG pan/zoom
+const svgEl = () => document.getElementById('network-svg');
+
+document.addEventListener('DOMContentLoaded', () => {
+  const svg = document.getElementById('network-svg');
+
+  svg.addEventListener('mousedown', (e) => {
+    if (e.target.closest('.net-node')) return;
+    netDrag = { sx: e.clientX - netTransform.x, sy: e.clientY - netTransform.y };
+  });
+  svg.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.1 : 0.91;
+    netTransform.scale *= factor;
+    netTransform.scale = Math.max(0.2, Math.min(5, netTransform.scale));
+    renderNetwork();
+  }, { passive: false });
+  document.addEventListener('mousemove', (e) => {
+    if (netDrag) {
+      netTransform.x = e.clientX - netDrag.sx;
+      netTransform.y = e.clientY - netDrag.sy;
+      renderNetwork();
+    }
+    if (nodeDrag) {
+      const svg = document.getElementById('network-svg');
+      const rect = svg.getBoundingClientRect();
+      nodePositions[nodeDrag.ptid] = {
+        x: (e.clientX - rect.left - netTransform.x) / netTransform.scale,
+        y: (e.clientY - rect.top  - netTransform.y) / netTransform.scale
+      };
+      renderNetwork();
+    }
+  });
+  document.addEventListener('mouseup', () => {
+    netDrag = null;
+    nodeDrag = null;
+  });
+
+  // Today's date default for new run
+  document.getElementById('rm-date').value = new Date().toISOString().slice(0,10);
+
+  renderAll();
+});
+
+function startNodeDrag(e, ptid) {
+  e.stopPropagation();
+  nodeDrag = { ptid };
+}
+
+// ═══════════════════════════════════════════════════════
+//  SELECTION (shared state)
+// ═══════════════════════════════════════════════════════
+function selectRun(id) {
+  state._activeRunId = id;
+  renderRuns();
+  renderShots();
+}
+
+function selectPoint(id) {
+  state._selectedPtId = id;
+  renderPoints();
+  renderNetwork();
+  // open edit
+  openEditPoint(id);
+}
+
+function selectShot(shotId, runId) {
+  state._selectedShotId = shotId;
+  const run = state.runs.find(r => r.id === runId);
+  const shot = run?.shots.find(s => s.id === shotId);
+  if (!shot) return;
+  renderShots();
+  openEditShot(runId, shotId);
+}
+
+// ═══════════════════════════════════════════════════════
+//  ADD SHOTS
+// ═══════════════════════════════════════════════════════
+function switchShotTab(tab, btn) {
+  state._shotTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-3wire').classList.toggle('hidden', tab !== '3wire');
+  document.getElementById('tab-1wire').classList.toggle('hidden', tab !== '1wire');
+  document.getElementById('tab-bm').classList.toggle('hidden', tab !== 'bm');
+}
+
+function previewCompute() {
+  const hi  = parseFloat(document.getElementById('s-hi').value);
+  const mid = parseFloat(document.getElementById('s-mid').value);
+  const lo  = parseFloat(document.getElementById('s-lo').value);
+  const out = document.getElementById('preview-out');
+  if (!isNaN(mid)) {
+    const mean = (!isNaN(hi) && !isNaN(lo)) ? (hi+mid+lo)/3 : mid;
+    const icheck = (!isNaN(hi) && !isNaN(lo)) ? Math.abs((hi-mid)-(mid-lo)) : null;
+    out.textContent = `mean = ${fmt(mean)}${icheck != null ? ` · interval Δ = ${fmt(icheck,4)}` : ''}`;
+    out.style.color = (icheck != null && icheck > 0.01) ? 'var(--bad)' : 'var(--accent2)';
+  } else {
+    out.textContent = '—';
+  }
+}
+
+function addShot() {
+  const run = state.runs.find(r => r.id === state._activeRunId);
+  if (!run) { alert('Select or create a run first.'); return; }
+
+  const type = document.getElementById('s-type').value;
+  const dist = parseFloat(document.getElementById('s-dist').value) || 0;
+  const flag = document.getElementById('s-flag').value || null;
+  const hi   = document.getElementById('s-hi').value !== '' ? parseFloat(document.getElementById('s-hi').value) : null;
+  const mid  = document.getElementById('s-mid').value !== '' ? parseFloat(document.getElementById('s-mid').value) : null;
+  const lo   = document.getElementById('s-lo').value !== '' ? parseFloat(document.getElementById('s-lo').value) : null;
+  const ptid = document.getElementById('s-ptid').value.trim();
+  const desc = document.getElementById('s-desc').value.trim();
+
+  if (mid == null) { alert('At least a mid wire reading is required.'); return; }
+
+  const shot = {
+    id: uid(),
+    type,
+    point_id: ptid || null,
+    desc,
+    wires: [hi, mid, lo],
+    dist,
+    flag,
+    note: '',
+    created: new Date().toISOString()
+  };
+
+  run.shots.push(shot);
+  if (ptid) ensurePoint(ptid, desc);
+
+  // Clear
+  ['s-hi','s-mid','s-lo','s-dist','s-ptid','s-desc'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('s-flag').value = '';
+  document.getElementById('preview-out').textContent = '—';
+
+  renderAll();
+}
+
+function add1WireShot() {
+  const run = state.runs.find(r => r.id === state._activeRunId);
+  if (!run) { alert('Select or create a run first.'); return; }
+
+  const type = document.getElementById('s1-type').value;
+  const dist = parseFloat(document.getElementById('s1-dist').value) || 0;
+  const flag = document.getElementById('s1-flag').value || null;
+  const mid  = parseFloat(document.getElementById('s1-mid').value);
+  const ptid = document.getElementById('s1-ptid').value.trim();
+  const desc = document.getElementById('s1-desc').value.trim();
+
+  if (isNaN(mid)) { alert('Rod reading required.'); return; }
+
+  const shot = {
+    id: uid(),
+    type,
+    point_id: ptid || null,
+    desc,
+    wires: [null, mid, null],
+    dist,
+    flag,
+    note: 'single-wire',
+    created: new Date().toISOString()
+  };
+
+  run.shots.push(shot);
+  if (ptid) ensurePoint(ptid, desc);
+
+  ['s1-mid','s1-dist','s1-ptid','s1-desc'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('s1-flag').value = '';
+
+  renderAll();
+}
+
+function addBM() {
+  const ptid = document.getElementById('bm-id').value.trim();
+  const elev = parseFloat(document.getElementById('bm-elev').value);
+  const source = document.getElementById('bm-source').value;
+  const desc = document.getElementById('bm-desc').value.trim();
+  const lat = document.getElementById('bm-lat').value.trim() || null;
+  const lon = document.getElementById('bm-lon').value.trim() || null;
+  const vel = document.getElementById('bm-vel').value !== '' ? parseFloat(document.getElementById('bm-vel').value) : null;
+
+  if (!ptid) { alert('Point ID required.'); return; }
+
+  ensurePoint(ptid, desc);
+  state.points[ptid].constrained = true;
+  if (!isNaN(elev)) state.points[ptid].elev = elev;
+  state.points[ptid].elev_source = source;
+  if (lat) state.points[ptid].lat = lat;
+  if (lon) state.points[ptid].lon = lon;
+  if (vel != null) state.points[ptid].velocity = vel;
+
+  // Also add a BM shot to active run if one is selected
+  const run = state.runs.find(r => r.id === state._activeRunId);
+  if (run) {
+    run.shots.push({
+      id: uid(),
+      type: 'BM',
+      point_id: ptid,
+      desc,
+      wires: [null, null, null],
+      dist: 0,
+      flag: 'GOOD',
+      note: source,
+      created: new Date().toISOString()
+    });
+  }
+
+  ['bm-id','bm-elev','bm-desc','bm-lat','bm-lon','bm-vel'].forEach(id => document.getElementById(id).value = '');
+  renderAll();
+}
+
+// ═══════════════════════════════════════════════════════
+//  EDIT MODALS
+// ═══════════════════════════════════════════════════════
+function openEditShot(runId, shotId) {
+  const run = state.runs.find(r => r.id === runId);
+  const shot = run?.shots.find(s => s.id === shotId);
+  if (!shot) return;
+
+  document.getElementById('es-run-id').value = runId;
+  document.getElementById('es-shot-id').value = shotId;
+  document.getElementById('es-type').value = shot.type;
+  document.getElementById('es-ptid').value = shot.point_id || '';
+  document.getElementById('es-desc').value = shot.desc || '';
+  document.getElementById('es-hi').value = shot.wires?.[0] ?? '';
+  document.getElementById('es-mid').value = shot.wires?.[1] ?? '';
+  document.getElementById('es-lo').value = shot.wires?.[2] ?? '';
+  document.getElementById('es-dist').value = shot.dist || '';
+  document.getElementById('es-flag').value = shot.flag || '';
+  document.getElementById('es-note').value = shot.note || '';
+
+  document.getElementById('edit-shot-modal').classList.remove('hidden');
+}
+
+function saveEditShot() {
+  const runId = document.getElementById('es-run-id').value;
+  const shotId = document.getElementById('es-shot-id').value;
+  const run = state.runs.find(r => r.id === runId);
+  const shot = run?.shots.find(s => s.id === shotId);
+  if (!shot) return;
+
+  const newPtid = document.getElementById('es-ptid').value.trim();
+  const newDesc = document.getElementById('es-desc').value.trim();
+
+  shot.type = document.getElementById('es-type').value;
+  shot.point_id = newPtid || null;
+  shot.desc = newDesc;
+  shot.wires = [
+    document.getElementById('es-hi').value !== '' ? parseFloat(document.getElementById('es-hi').value) : null,
+    document.getElementById('es-mid').value !== '' ? parseFloat(document.getElementById('es-mid').value) : null,
+    document.getElementById('es-lo').value !== '' ? parseFloat(document.getElementById('es-lo').value) : null
+  ];
+  shot.dist = parseFloat(document.getElementById('es-dist').value) || 0;
+  shot.flag = document.getElementById('es-flag').value || null;
+  shot.note = document.getElementById('es-note').value;
+
+  if (newPtid) ensurePoint(newPtid, newDesc);
+  closeModal('edit-shot-modal');
+  renderAll();
+}
+
+function deleteShot() {
+  const runId = document.getElementById('es-run-id').value;
+  const shotId = document.getElementById('es-shot-id').value;
+  const run = state.runs.find(r => r.id === runId);
+  if (!run) return;
+  if (!confirm('Delete this shot?')) return;
+  run.shots = run.shots.filter(s => s.id !== shotId);
+  state._selectedShotId = null;
+  closeModal('edit-shot-modal');
+  renderAll();
+}
+
+function openEditPoint(id) {
+  const pt = state.points[id];
+  if (!pt) return;
+
+  document.getElementById('ep-orig-id').value = id;
+  document.getElementById('ep-id').value = pt.id;
+  document.getElementById('ep-desc').value = pt.desc || '';
+  document.getElementById('ep-constrained').value = pt.constrained ? 'true' : 'false';
+  document.getElementById('ep-elev').value = pt.elev ?? '';
+  document.getElementById('ep-source').value = pt.elev_source || 'Leveled';
+  document.getElementById('ep-lat').value = pt.lat || '';
+  document.getElementById('ep-lon').value = pt.lon || '';
+  document.getElementById('ep-vel').value = pt.velocity ?? '';
+  document.getElementById('ep-notes').value = pt.notes || '';
+
+  document.getElementById('edit-pt-modal').classList.remove('hidden');
+}
+
+function saveEditPoint() {
+  const origId = document.getElementById('ep-orig-id').value;
+  const newId  = document.getElementById('ep-id').value.trim();
+  if (!newId) return;
+
+  const pt = state.points[origId];
+  if (!pt) return;
+
+  pt.desc       = document.getElementById('ep-desc').value.trim();
+  pt.constrained= document.getElementById('ep-constrained').value === 'true';
+  const elev    = document.getElementById('ep-elev').value;
+  pt.elev       = elev !== '' ? parseFloat(elev) : null;
+  pt.elev_source= document.getElementById('ep-source').value;
+  pt.lat        = document.getElementById('ep-lat').value.trim() || null;
+  pt.lon        = document.getElementById('ep-lon').value.trim() || null;
+  const vel     = document.getElementById('ep-vel').value;
+  pt.velocity   = vel !== '' ? parseFloat(vel) : null;
+  pt.notes      = document.getElementById('ep-notes').value;
+
+  // Rename if ID changed
+  if (newId !== origId) {
+    pt.id = newId;
+    state.points[newId] = pt;
+    delete state.points[origId];
+
+    // Update all shot references
+    for (const run of state.runs) {
+      for (const shot of run.shots) {
+        if (shot.point_id === origId) shot.point_id = newId;
+      }
+    }
+    if (state._selectedPtId === origId) state._selectedPtId = newId;
+  }
+
+  closeModal('edit-pt-modal');
+  renderAll();
+}
+
+// ═══════════════════════════════════════════════════════
+//  PROJECT / RUN MODALS
+// ═══════════════════════════════════════════════════════
+function showProjectModal() {
+  document.getElementById('pm-name').value     = state.project.name;
+  document.getElementById('pm-desc').value     = state.project.description;
+  document.getElementById('pm-datum').value    = state.project.datum;
+  document.getElementById('pm-rodcorr').value  = state.project.rod_correction;
+  document.getElementById('pm-observer').value = state.project.observer;
+  document.getElementById('proj-modal').classList.remove('hidden');
+}
+
+function saveProjectSettings() {
+  state.project.name        = document.getElementById('pm-name').value.trim() || 'Untitled';
+  state.project.description = document.getElementById('pm-desc').value;
+  state.project.datum       = document.getElementById('pm-datum').value;
+  state.project.rod_correction = parseFloat(document.getElementById('pm-rodcorr').value) || -0.0007;
+  state.project.observer    = document.getElementById('pm-observer').value;
+  document.getElementById('proj-name-display').textContent = state.project.name;
+  closeModal('proj-modal');
+  renderAll();
+}
+
+function newRun() {
+  document.getElementById('rm-name').value       = '';
+  document.getElementById('rm-date').value       = new Date().toISOString().slice(0,10);
+  document.getElementById('rm-observer').value   = state.project.observer || '';
+  document.getElementById('rm-instrument').value = '';
+  document.getElementById('rm-rodcorr').value    = '';
+  document.getElementById('rm-notes').value      = '';
+  document.getElementById('run-modal').classList.remove('hidden');
+}
+
+function createRun() {
+  const name = document.getElementById('rm-name').value.trim();
+  if (!name) { alert('Run name required.'); return; }
+
+  const rcOverride = document.getElementById('rm-rodcorr').value;
+
+  const run = {
+    id: uid(),
+    name,
+    date: document.getElementById('rm-date').value,
+    observer: document.getElementById('rm-observer').value,
+    instrument: document.getElementById('rm-instrument').value,
+    rod_correction_override: rcOverride !== '' ? parseFloat(rcOverride) : null,
+    notes: document.getElementById('rm-notes').value,
+    shots: [],
+    created: new Date().toISOString()
+  };
+
+  state.runs.push(run);
+  state._activeRunId = run.id;
+  closeModal('run-modal');
+  renderAll();
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.add('hidden');
+}
+
+// Close modal on overlay click
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.classList.add('hidden');
+  });
+});
+
+// ═══════════════════════════════════════════════════════
+//  SAVE / LOAD
+// ═══════════════════════════════════════════════════════
+function saveFile() {
+  state.project.modified = new Date().toISOString();
+  const json = JSON.stringify(state, (k, v) => k.startsWith('_') ? undefined : v, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (state.project.name.replace(/\s+/g,'_') || 'project') + '.lvlnet';
+  a.click();
+  URL.revokeObjectURL(url);
+  setStatus('Saved');
+}
+
+function loadFile() {
+  document.getElementById('file-input').click();
+}
+
+function handleFileLoad(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      const loaded = JSON.parse(ev.target.result);
+      // Restore state (excluding private fields)
+      state.project    = loaded.project || state.project;
+      state.runs       = loaded.runs || [];
+      state.points     = loaded.points || {};
+      state.adjustments= loaded.adjustments || [];
+      state._activeRunId   = null;
+      state._selectedPtId  = null;
+      state._selectedShotId = null;
+      nodePositions = {};
+      document.getElementById('proj-name-display').textContent = state.project.name;
+      setStatus(`Loaded: ${file.name}`);
+      runAdjustment();
+      autoLayout();
+      renderAll();
+    } catch(err) {
+      alert('Failed to load file: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+}
+
+// ═══════════════════════════════════════════════════════
+//  EXPORT CSV
+// ═══════════════════════════════════════════════════════
+function exportCSV() {
+  updatePointElevFromRuns();
+  const rows = [['Point ID','Description','Elevation','Source','Constrained','Lat','Lon','Velocity mm/yr','Obs Count']];
+  for (const pt of Object.values(state.points)) {
+    rows.push([
+      pt.id, pt.desc||'',
+      fmt(pt.elev ?? pt.elev_raw),
+      pt.elev_source||'',
+      pt.constrained ? 'Y' : 'N',
+      pt.lat||'', pt.lon||'',
+      pt.velocity??'',
+      pt.elev_raw_count||''
+    ]);
+  }
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (state.project.name.replace(/\s+/g,'_')||'lvlnet') + '_points.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ═══════════════════════════════════════════════════════
+//  STATUS / CLOSURE BAR
+// ═══════════════════════════════════════════════════════
+function setStatus(msg) {
+  document.getElementById('status-pill').textContent = msg;
+}
+
+function updateClosureBar() {
+  const totalShots = state.runs.reduce((a,r) => a + r.shots.length, 0);
+  document.getElementById('cb-shots').textContent = totalShots;
+  document.getElementById('cb-pts').textContent = Object.keys(state.points).length;
+  document.getElementById('cb-runs').textContent = state.runs.length;
+}
+
+// ═══════════════════════════════════════════════════════
+//  KEYBOARD
+// ═══════════════════════════════════════════════════════
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal-overlay').forEach(m => m.classList.add('hidden'));
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault();
+    saveFile();
+  }
+});
+</script>
+</body>
+</html>
