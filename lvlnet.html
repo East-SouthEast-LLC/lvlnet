@@ -487,6 +487,7 @@
   <button class="tb-btn primary" onclick="saveFile()">⬇ Save .lvlnet</button>
   <button class="tb-btn" onclick="loadFile()">⬆ Load .lvlnet</button>
   <button class="tb-btn" onclick="runAdjustment()">⟳ Adjust</button>
+  <button class="tb-btn" id="fs-btn" onclick="toggleFullscreen()" title="Toggle fullscreen (F11)">⛶ Full</button>
   <div id="status-pill">READY</div>
 </div>
 
@@ -1778,6 +1779,25 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     saveFile();
   }
+  if (e.key === 'F11') {
+    e.preventDefault();
+    toggleFullscreen();
+  }
+});
+
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(() => {});
+    document.getElementById('fs-btn').textContent = '✕ Exit Full';
+  } else {
+    document.exitFullscreen().catch(() => {});
+    document.getElementById('fs-btn').textContent = '⛶ Full';
+  }
+}
+
+document.addEventListener('fullscreenchange', () => {
+  const btn = document.getElementById('fs-btn');
+  if (btn) btn.textContent = document.fullscreenElement ? '✕ Exit Full' : '⛶ Full';
 });
 </script>
 </body>
