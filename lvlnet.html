@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LvlNet — Level Network Reduction</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
   :root {
     --bg:       #0f1117;
@@ -474,6 +475,28 @@
   .tab-btn.active { border-bottom-color: var(--accent); color: var(--accent); }
 
   .hidden { display: none !important; }
+
+  /* ── COORD PICKER ── */
+  #coord-picker-modal .modal {
+    min-width: 560px;
+    max-width: 700px;
+    width: 90vw;
+  }
+  #coord-picker-map {
+    height: 380px;
+    width: 100%;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    margin: 10px 0;
+    background: #222;
+  }
+  #coord-picker-readout {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent2);
+    margin-bottom: 10px;
+    min-height: 18px;
+  }
 </style>
 </head>
 <body>
@@ -629,6 +652,7 @@
           <label>Coord</label>
           <input type="text" id="bm-lat" placeholder="lat" style="width:100px">
           <input type="text" id="bm-lon" placeholder="lon" style="width:110px; margin-left:4px">
+          <button class="tb-btn" style="margin-left:6px;font-size:12px;padding:3px 8px" title="Pick from map" onclick="openCoordPicker('bm')">📍</button>
         </div>
         <div class="form-row">
           <label>Vel</label>
@@ -773,7 +797,11 @@
         <option>Estimated</option><option>2009 run</option><option>Legacy</option>
       </select>
     </div>
-    <div class="modal-row"><label>Latitude</label><input id="ep-lat" type="text"></div>
+    <div class="modal-row">
+      <label>Latitude</label>
+      <input id="ep-lat" type="text" style="flex:1">
+      <button class="tb-btn" style="margin-left:6px;font-size:12px;padding:3px 8px" title="Pick from map" onclick="openCoordPicker('ep')">📍</button>
+    </div>
     <div class="modal-row"><label>Longitude</label><input id="ep-lon" type="text"></div>
     <div class="modal-row"><label>Vertical Velocity mm/yr (CORS)</label><input id="ep-vel" type="number" step="0.01"></div>
     <div class="modal-row"><label>Notes</label><textarea id="ep-notes"></textarea></div>
@@ -784,8 +812,22 @@
   </div>
 </div>
 
+<!-- COORD PICKER MODAL -->
+<div class="modal-overlay hidden" id="coord-picker-modal">
+  <div class="modal">
+    <h2>PICK COORDINATES</h2>
+    <div id="coord-picker-readout">Click the map to set coordinates</div>
+    <div id="coord-picker-map"></div>
+    <div class="modal-actions">
+      <button class="tb-btn" onclick="closeModal('coord-picker-modal')">Cancel</button>
+      <button class="tb-btn primary" id="coord-picker-confirm" onclick="confirmCoordPick()" disabled>Use This Location</button>
+    </div>
+  </div>
+</div>
+
 <input type="file" id="file-input" accept=".lvlnet" style="display:none" onchange="handleFileLoad(event)">
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════
 //  STATE
@@ -1799,6 +1841,79 @@ document.addEventListener('fullscreenchange', () => {
   const btn = document.getElementById('fs-btn');
   if (btn) btn.textContent = document.fullscreenElement ? '✕ Exit Full' : '⛶ Full';
 });
+
+// ═══════════════════════════════════════════════════════
+//  COORD PICKER
+// ═══════════════════════════════════════════════════════
+let _coordPickerMap = null;
+let _coordPickerMarker = null;
+let _coordPickerTarget = null; // 'bm' or 'ep'
+let _coordPickerResult = null;
+
+function openCoordPicker(target) {
+  _coordPickerTarget = target;
+  _coordPickerResult = null;
+
+  // Seed map center from existing lat/lon fields if present
+  const latId = target === 'bm' ? 'bm-lat' : 'ep-lat';
+  const lonId = target === 'bm' ? 'bm-lon' : 'ep-lon';
+  const existLat = parseFloat(document.getElementById(latId).value);
+  const existLon = parseFloat(document.getElementById(lonId).value);
+  const center = (!isNaN(existLat) && !isNaN(existLon))
+    ? [existLat, existLon]
+    : [41.68, -70.0]; // Cape Cod default
+
+  document.getElementById('coord-picker-modal').classList.remove('hidden');
+  document.getElementById('coord-picker-readout').textContent = 'Click the map to set coordinates';
+  document.getElementById('coord-picker-confirm').disabled = true;
+
+  // Init or reuse map
+  setTimeout(() => {
+    if (!_coordPickerMap) {
+      _coordPickerMap = L.map('coord-picker-map').setView(center, 15);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors',
+        maxZoom: 20
+      }).addTo(_coordPickerMap);
+      _coordPickerMap.on('click', onCoordMapClick);
+    } else {
+      _coordPickerMap.setView(center, 15);
+      if (_coordPickerMarker) { _coordPickerMap.removeLayer(_coordPickerMarker); _coordPickerMarker = null; }
+    }
+
+    // Pre-place marker if coords already exist
+    if (!isNaN(existLat) && !isNaN(existLon)) {
+      _coordPickerMarker = L.marker([existLat, existLon]).addTo(_coordPickerMap);
+      _coordPickerResult = { lat: existLat, lon: existLon };
+      document.getElementById('coord-picker-readout').textContent =
+        `Lat: ${existLat.toFixed(7)}   Lon: ${existLon.toFixed(7)}`;
+      document.getElementById('coord-picker-confirm').disabled = false;
+    }
+
+    _coordPickerMap.invalidateSize();
+  }, 50);
+}
+
+function onCoordMapClick(e) {
+  const { lat, lng } = e.latlng;
+  _coordPickerResult = { lat, lon: lng };
+
+  if (_coordPickerMarker) _coordPickerMap.removeLayer(_coordPickerMarker);
+  _coordPickerMarker = L.marker([lat, lng]).addTo(_coordPickerMap);
+
+  document.getElementById('coord-picker-readout').textContent =
+    `Lat: ${lat.toFixed(7)}   Lon: ${lng.toFixed(7)}`;
+  document.getElementById('coord-picker-confirm').disabled = false;
+}
+
+function confirmCoordPick() {
+  if (!_coordPickerResult) return;
+  const latId = _coordPickerTarget === 'bm' ? 'bm-lat' : 'ep-lat';
+  const lonId = _coordPickerTarget === 'bm' ? 'bm-lon' : 'ep-lon';
+  document.getElementById(latId).value = _coordPickerResult.lat.toFixed(7);
+  document.getElementById(lonId).value = _coordPickerResult.lon.toFixed(7);
+  closeModal('coord-picker-modal');
+}
 </script>
 </body>
 </html>
