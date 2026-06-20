@@ -943,7 +943,6 @@ function reduceRun(run) {
     const hi = shot.wires ? shot.wires[0] : null;
     const mid = shot.wires ? shot.wires[1] : null;
     const lo = shot.wires ? shot.wires[2] : null;
-    const dist = shot.dist || 0;
     const corrFactor = 1 + rc * dist / 100;
     const mean = threeWireMean(hi, mid, lo);
     const correctedMean = mean != null ? mean * corrFactor : (mid != null ? mid * corrFactor : null);
@@ -959,7 +958,7 @@ function reduceRun(run) {
       } else if (shot.elev != null) {
         currentElev = shot.elev;
       }
-      results.push({ ...shot, mean, correctedMean, interval, elev: currentElev, hi_inst: currentHI });
+      results.push({ ...shot, dist, mean, correctedMean, interval, elev: currentElev, hi_inst: currentHI });
       continue;
     }
 
@@ -969,7 +968,7 @@ function reduceRun(run) {
         computedHI = currentHI;
       }
       bsDistAcc += dist;
-      results.push({ ...shot, mean, correctedMean, interval, hi_inst: computedHI, elev: currentElev });
+      results.push({ ...shot, dist, mean, correctedMean, interval, hi_inst: computedHI, elev: currentElev });
       continue;
     }
 
@@ -977,10 +976,10 @@ function reduceRun(run) {
       if (currentHI != null && correctedMean != null) {
         computedElev = currentHI - correctedMean;
         currentElev = computedElev;
-        currentHI = null; // needs new BS
+        currentHI = null;
       }
       fsDistAcc += dist;
-      results.push({ ...shot, mean, correctedMean, interval, elev: computedElev, hi_inst: null });
+      results.push({ ...shot, dist, mean, correctedMean, interval, elev: computedElev, hi_inst: null });
       continue;
     }
 
@@ -988,11 +987,11 @@ function reduceRun(run) {
       if (currentHI != null && correctedMean != null) {
         computedElev = currentHI - correctedMean;
       }
-      results.push({ ...shot, mean, correctedMean, interval, elev: computedElev, hi_inst: null });
+      results.push({ ...shot, dist, mean, correctedMean, interval, elev: computedElev, hi_inst: null });
       continue;
     }
 
-    results.push({ ...shot, mean, correctedMean, interval, elev: null, hi_inst: null });
+    results.push({ ...shot, dist, mean, correctedMean, interval, elev: null, hi_inst: null });
   }
 
   return results;
@@ -1580,7 +1579,8 @@ function previewCompute() {
   if (!isNaN(mid)) {
     const mean = (!isNaN(hi) && !isNaN(lo)) ? (hi+mid+lo)/3 : mid;
     const icheck = (!isNaN(hi) && !isNaN(lo)) ? Math.abs((hi-mid)-(mid-lo)) : null;
-    out.textContent = `mean = ${fmt(mean)}${icheck != null ? ` · interval Δ = ${fmt(icheck,4)}` : ''}`;
+    const distPrev = (!isNaN(hi) && !isNaN(lo)) ? ` · dist = ${((hi-lo)*100).toFixed(1)}ft` : '';
+    out.textContent = `mean = ${fmt(mean)}${distPrev}${icheck != null ? ` · interval Δ = ${fmt(icheck,4)}` : ''}`;
     out.style.color = (icheck != null && icheck > 0.01) ? 'var(--bad)' : 'var(--accent2)';
   } else {
     out.textContent = '—';
@@ -1602,13 +1602,15 @@ function addShot() {
 
   if (mid == null) { alert('At least a mid wire reading is required.'); return; }
 
+  const computedDist = (hi != null && lo != null) ? (hi - lo) * 100 : dist;
+
   const shot = {
     id: uid(),
     type,
     point_id: ptid || null,
     desc,
     wires: [hi, mid, lo],
-    dist,
+    dist: computedDist,
     flag,
     note: '',
     created: new Date().toISOString()
