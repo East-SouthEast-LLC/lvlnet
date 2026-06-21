@@ -943,6 +943,7 @@ function reduceRun(run) {
     const hi = shot.wires ? shot.wires[0] : null;
     const mid = shot.wires ? shot.wires[1] : null;
     const lo = shot.wires ? shot.wires[2] : null;
+    const dist = (hi != null && lo != null) ? (hi - lo) * 100 : (shot.dist || 0);
     const corrFactor = 1 + rc * dist / 100;
     const mean = threeWireMean(hi, mid, lo);
     const correctedMean = mean != null ? mean * corrFactor : (mid != null ? mid * corrFactor : null);
