@@ -905,7 +905,7 @@
       <option>2009 run</option>
       <option>Legacy</option>
     </select></div>
-    <div class="modal-row"><label>Latitude</label><input id="ap-lat" type="text" placeholder="decimal degrees"></div>
+    <div class="modal-row"><label>Latitude</label><input id="ap-lat" type="text" placeholder="decimal degrees"><button class="tb-btn" style="margin-left:6px;font-size:12px;padding:3px 8px" title="Pick from map" onclick="openCoordPicker('ap')">📍</button></div>
     <div class="modal-row"><label>Longitude</label><input id="ap-lon" type="text" placeholder="decimal degrees"></div>
     <div class="modal-row"><label>Constrained</label><input id="ap-constrained" type="checkbox"></div>
     <div class="modal-row"><label>Notes</label><textarea id="ap-notes" style="height:60px"></textarea></div>
@@ -2526,7 +2526,7 @@ document.addEventListener('fullscreenchange', () => {
 // ═══════════════════════════════════════════════════════
 let _coordPickerMap = null;
 let _coordPickerMarker = null;
-let _coordPickerTarget = null; // 'bm' or 'ep'
+let _coordPickerTarget = null; // 'bm', 'ep', or 'ap'
 let _coordPickerResult = null;
 
 // ═══════════════════════════════════════════════════════
@@ -2709,8 +2709,8 @@ function openCoordPicker(target) {
   _coordPickerResult = null;
 
   // Seed map center from existing lat/lon fields if present
-  const latId = target === 'bm' ? 'bm-lat' : 'ep-lat';
-  const lonId = target === 'bm' ? 'bm-lon' : 'ep-lon';
+  const latId = target === 'bm' ? 'bm-lat' : target === 'ap' ? 'ap-lat' : 'ep-lat';
+  const lonId = target === 'bm' ? 'bm-lon' : target === 'ap' ? 'ap-lon' : 'ep-lon';
   const existLat = parseFloat(document.getElementById(latId).value);
   const existLon = parseFloat(document.getElementById(lonId).value);
   const center = (!isNaN(existLat) && !isNaN(existLon))
@@ -2762,8 +2762,8 @@ function onCoordMapClick(e) {
 
 function confirmCoordPick() {
   if (!_coordPickerResult) return;
-  const latId = _coordPickerTarget === 'bm' ? 'bm-lat' : 'ep-lat';
-  const lonId = _coordPickerTarget === 'bm' ? 'bm-lon' : 'ep-lon';
+  const latId = _coordPickerTarget === 'bm' ? 'bm-lat' : _coordPickerTarget === 'ap' ? 'ap-lat' : 'ep-lat';
+  const lonId = _coordPickerTarget === 'bm' ? 'bm-lon' : _coordPickerTarget === 'ap' ? 'ap-lon' : 'ep-lon';
   document.getElementById(latId).value = _coordPickerResult.lat.toFixed(7);
   document.getElementById(lonId).value = _coordPickerResult.lon.toFixed(7);
   closeModal('coord-picker-modal');
