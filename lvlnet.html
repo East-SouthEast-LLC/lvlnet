@@ -349,6 +349,7 @@
   .td-computed { color: var(--good); font-size: 10px; }
   .td-warn { color: var(--check); }
   .td-bad-row { background: rgba(224,82,82,0.08) !important; }
+  .bm-row { background: rgba(255,144,96,0.06) !important; border-top: 1px solid rgba(255,144,96,0.25) !important; }
 
   .flag-GOOD  { color: var(--good); font-weight: 700; }
   .flag-BAD   { color: var(--bad);  font-weight: 700; }
@@ -1215,87 +1216,31 @@ function saveShotsToRun() {
     alert('No active run');
     return;
   }
-  
-  let currentHI = null;
-  const rc = rodCorr(run);
-  
-  // First pass: calculate elevations and create points
-  for (let i = 0; i < rapidEntry.shots.length; i++) {
-    const shot = rapidEntry.shots[i];
-    const hi = shot.wires[0];
-    const mid = shot.wires[1];
-    const lo = shot.wires[2];
-    const dist = (hi - lo) * 100;
-    const corrFactor = 1 + rc * dist / 100;
-    const correctedMid = mid * corrFactor;
-    const ptid = shot.ptid;
-    
-    if (shot.type === 1) {
-      // BS: establish HI from backsight point
-      if (i === 0) {
-        // First shot: use selected BS point elevation
-        currentHI = rapidEntry.bsPointElev + correctedMid;
-      } else {
-        // Subsequent BS: use previous TP elevation
-        const prevTP = rapidEntry.shots.slice(0, i).reverse().find(s => s.type === 2);
-        if (prevTP && state.points[prevTP.ptid]) {
-          currentHI = state.points[prevTP.ptid].elev + correctedMid;
-        }
-      }
-    } else if (shot.type === 2) {
-      // FS-TP: create point at this elevation
-      if (currentHI !== null) {
-        const elev = currentHI - correctedMid;
-        if (ptid) {
-          if (!state.points[ptid]) {
-            state.points[ptid] = {
-              id: ptid,
-              desc: shot.desc || '',
-              constrained: false,
-              elev: elev,
-              elev_source: `Run: ${run.name}`,
-              elev_raw: elev,
-              elev_raw_count: 1,
-              lat: null,
-              lon: null,
-              velocity: null,
-              notes: '',
-              aliases: []
-            };
-          }
-        }
-      }
-    } else if (shot.type === 3 || shot.type === 4 || shot.type === 5 || shot.type === 6) {
-      // SS: create point at this elevation
-      if (currentHI !== null) {
-        const elev = currentHI - correctedMid;
-        if (ptid) {
-          if (!state.points[ptid]) {
-            state.points[ptid] = {
-              id: ptid,
-              desc: shot.desc || '',
-              constrained: false,
-              elev: elev,
-              elev_source: `Run: ${run.name}`,
-              elev_raw: elev,
-              elev_raw_count: 1,
-              lat: null,
-              lon: null,
-              velocity: null,
-              notes: '',
-              aliases: []
-            };
-          }
-        }
-      }
+
+  // Prepend a BM shot so reduceRun has a starting elevation
+  if (rapidEntry.bsPointId) {
+    ensurePoint(rapidEntry.bsPointId, '');
+    const alreadyHasBM = run.shots.length > 0 &&
+      run.shots[0].type === 'BM' && run.shots[0].point_id === rapidEntry.bsPointId;
+    if (!alreadyHasBM) {
+      run.shots.push({
+        id: uid(),
+        type: 'BM',
+        wires: null,
+        point_id: rapidEntry.bsPointId,
+        desc: ''
+      });
     }
   }
-  
-  // Second pass: add shots to run
+
+  // Type map: DOS numeric codes -> run string types
+  const typeMap = { 1:'BS', 2:'FS', 3:'SS', 4:'SS', 5:'SS', 6:'TP' };
+
+  // Add shots — reduceRun handles all elevation computation
   for (const shot of rapidEntry.shots) {
     const shotData = {
       id: shot.id,
-      type: shot.type === 1 ? 'BS' : shot.type === 2 ? 'FS' : 'SS',
+      type: typeMap[shot.type] || 'SS',
       wires: shot.wires,
       point_id: shot.ptid || null,
       desc: shot.desc || ''
@@ -1434,11 +1379,16 @@ function updatePointElevFromRuns() {
   }
 
   for (const [ptid, elevs] of Object.entries(elevMap)) {
-    if (!state.points[ptid]) ensurePoint(ptid, '');
+    ensurePoint(ptid, '');
     if (!state.points[ptid].constrained) {
-      // Use mean of all leveled values (pre-adjustment)
-      state.points[ptid].elev_raw = elevs.reduce((a,b)=>a+b,0)/elevs.length;
+      const mean = elevs.reduce((a,b)=>a+b,0)/elevs.length;
+      state.points[ptid].elev_raw = mean;
       state.points[ptid].elev_raw_count = elevs.length;
+      // Propagate to elev so it shows in the points list
+      if (state.points[ptid].elev == null) {
+        state.points[ptid].elev = mean;
+        state.points[ptid].elev_source = 'Leveled';
+      }
     }
   }
 }
@@ -1571,7 +1521,8 @@ function renderShots() {
 
     const rowClass = [
       s.id === state._selectedShotId ? 'selected' : '',
-      isBad ? 'td-bad-row' : ''
+      isBad ? 'td-bad-row' : '',
+      s.type === 'BM' ? 'bm-row' : ''
     ].filter(Boolean).join(' ');
 
     const desc = s.desc ? `<br><span style="color:var(--muted);font-size:10px">${s.desc}</span>` : '';
