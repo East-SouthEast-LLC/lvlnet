@@ -765,6 +765,7 @@
     <div class="panel-header">
       <div class="panel-title">All Points</div>
       <div class="panel-actions">
+        <button class="tb-btn" style="font-size:11px;padding:2px 8px" onclick="openAddPointModal()">+ Point</button>
         <button class="tb-btn" style="font-size:11px;padding:2px 8px" onclick="exportCSV()">CSV</button>
       </div>
     </div>
@@ -885,6 +886,32 @@
     <div class="modal-actions">
       <button class="tb-btn" onclick="closeModal('edit-pt-modal')">Cancel</button>
       <button class="tb-btn primary" onclick="saveEditPoint()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD POINT MODAL -->
+<div class="modal-overlay hidden" id="add-point-modal">
+  <div class="modal">
+    <h2>ADD POINT</h2>
+    <div class="modal-row"><label>Point ID</label><input id="ap-id" type="text" placeholder="e.g. BM-2009"></div>
+    <div class="modal-row"><label>Description</label><input id="ap-desc" type="text" placeholder="e.g. Nail in wood"></div>
+    <div class="modal-row"><label>Elevation (NAVD88)</label><input id="ap-elev" type="number" step="0.001" placeholder=""></div>
+    <div class="modal-row"><label>Source</label><select id="ap-source">
+      <option>NAVD88 published</option>
+      <option>GPS+LS</option>
+      <option>Leveled</option>
+      <option>Estimated</option>
+      <option>2009 run</option>
+      <option>Legacy</option>
+    </select></div>
+    <div class="modal-row"><label>Latitude</label><input id="ap-lat" type="text" placeholder="decimal degrees"></div>
+    <div class="modal-row"><label>Longitude</label><input id="ap-lon" type="text" placeholder="decimal degrees"></div>
+    <div class="modal-row"><label>Constrained</label><input id="ap-constrained" type="checkbox"></div>
+    <div class="modal-row"><label>Notes</label><textarea id="ap-notes" style="height:60px"></textarea></div>
+    <div class="modal-actions">
+      <button class="tb-btn" onclick="closeModal('add-point-modal')">Cancel</button>
+      <button class="tb-btn primary" onclick="createPoint()">Add Point</button>
     </div>
   </div>
 </div>
@@ -2260,6 +2287,49 @@ function createRun() {
   
   closeModal('run-modal');
   renderAll();
+}
+
+function openAddPointModal() {
+  document.getElementById('ap-id').value = '';
+  document.getElementById('ap-desc').value = '';
+  document.getElementById('ap-elev').value = '';
+  document.getElementById('ap-source').value = 'NAVD88 published';
+  document.getElementById('ap-lat').value = '';
+  document.getElementById('ap-lon').value = '';
+  document.getElementById('ap-constrained').checked = false;
+  document.getElementById('ap-notes').value = '';
+  document.getElementById('add-point-modal').classList.remove('hidden');
+}
+
+function createPoint() {
+  const id = document.getElementById('ap-id').value.trim();
+  if (!id) { alert('Point ID required'); return; }
+  
+  const elev = parseFloat(document.getElementById('ap-elev').value);
+  if (isNaN(elev)) { alert('Elevation required'); return; }
+  
+  const lat = document.getElementById('ap-lat').value.trim();
+  const lon = document.getElementById('ap-lon').value.trim();
+  
+  const point = {
+    id,
+    desc: document.getElementById('ap-desc').value.trim(),
+    elev,
+    elev_source: document.getElementById('ap-source').value,
+    elev_raw: elev,
+    elev_raw_count: 1,
+    constrained: document.getElementById('ap-constrained').checked,
+    lat: lat ? parseFloat(lat) : null,
+    lon: lon ? parseFloat(lon) : null,
+    velocity: null,
+    notes: document.getElementById('ap-notes').value.trim(),
+    aliases: []
+  };
+  
+  state.points[id] = point;
+  closeModal('add-point-modal');
+  renderAll();
+  setStatus(`Point ${id} added`);
 }
 
 function closeModal(id) {
