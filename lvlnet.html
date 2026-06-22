@@ -176,6 +176,109 @@
   #shot-area::-webkit-scrollbar { width: 6px; }
   #shot-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
+  /* ── RAPID ENTRY ── */
+  #entry-section {
+    padding: 12px;
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  #entry-section.active { display: flex; }
+
+  .entry-header {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+  }
+
+  #bs-select-btn {
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    color: #fff;
+    font-size: 12px;
+    font-family: var(--sans);
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+    width: 100%;
+    transition: background 0.15s;
+  }
+  #bs-select-btn:hover { background: #3a8eef; }
+  #bs-select-btn.selected { background: var(--good); border-color: var(--good); }
+
+  .entry-row {
+    display: grid;
+    grid-template-columns: 50px 1fr;
+    gap: 8px;
+    align-items: center;
+  }
+  .entry-row label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+  }
+  .entry-row input,
+  .entry-row select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 6px 8px;
+    border-radius: 3px;
+    outline: none;
+  }
+  .entry-row input:focus,
+  .entry-row select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(74, 158, 255, 0.1);
+  }
+
+  .entry-status {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    padding: 4px 8px;
+    background: var(--surface);
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    min-height: 20px;
+    display: flex;
+    align-items: center;
+  }
+  .entry-status.error { color: var(--bad); border-color: var(--bad); }
+  .entry-status.ok { color: var(--good); border-color: var(--good); }
+
+  .shot-preview {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 6px 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--muted);
+    max-height: 120px;
+    overflow-y: auto;
+  }
+  .shot-preview-item {
+    padding: 2px 0;
+    color: var(--text);
+  }
+  .shot-preview-item .type-tag {
+    display: inline-block;
+    margin-right: 6px;
+    font-weight: 700;
+  }
+
   /* ── SHOT TABLE ── */
   #shot-table-wrap {
     flex: 1;
@@ -576,131 +679,52 @@
       </div>
     </div>
 
-    <div id="add-shot-panel">
-      <div class="tab-strip">
-        <button class="tab-btn active" data-tab="3wire" onclick="switchShotTab('3wire',this)">3-Wire</button>
-        <button class="tab-btn" data-tab="1wire" onclick="switchShotTab('1wire',this)">1-Wire</button>
-        <button class="tab-btn" data-tab="bm" onclick="switchShotTab('bm',this)">Set BM</button>
-      </div>
+    <div id="entry-section">
+      <div class="entry-header">RAPID ENTRY</div>
 
-      <!-- 3-Wire tab -->
-      <div id="tab-3wire">
-        <div class="form-row">
+      <button id="bs-select-btn" onclick="startBSSelection()">1. Click to Select Backsight Point</button>
+      <div id="bs-status" class="entry-status">No backsight selected</div>
+
+      <div id="entry-form" style="display: none;">
+        <div class="entry-row">
+          <label>Shot #</label>
+          <div id="shot-num" style="font-family: var(--mono); font-size: 13px; color: var(--text);">1</div>
+        </div>
+
+        <div class="entry-row">
           <label>Type</label>
-          <select id="s-type" style="width:60px">
-            <option>BS</option>
-            <option>FS</option>
-            <option>SS</option>
-            <option>TP</option>
-          </select>
-          <label style="margin-left:6px">Dist</label>
-          <input type="number" id="s-dist" placeholder="ft" style="width:60px" step="0.1">
-          <label style="margin-left:6px">Flag</label>
-          <select id="s-flag" style="width:68px">
-            <option value="">—</option>
-            <option>GOOD</option>
-            <option>BAD</option>
-            <option>CHECK</option>
+          <select id="entry-type" onchange="validateShotSequence()" style="width: 100%;">
+            <option value="">— Select —</option>
+            <option value="1">1: BS (Backsight)</option>
+            <option value="2">2: FS-TP (Foresight to TP)</option>
+            <option value="3">3: FS-SS (Sideshot)</option>
+            <option value="4">4: Hydrant</option>
+            <option value="5">5: Bound</option>
+            <option value="6">6: Turning Point</option>
           </select>
         </div>
-        <div class="form-row">
-          <label>Wires</label>
-          <div class="wire-inputs">
-            <div class="wire-col">
-              <div class="wire-label">HI</div>
-              <input type="number" id="s-hi" placeholder="hi" step="0.001" style="width:70px" oninput="previewCompute()">
-            </div>
-            <div class="wire-col">
-              <div class="wire-label">MID</div>
-              <input type="number" id="s-mid" placeholder="mid" step="0.001" style="width:70px" oninput="previewCompute()">
-            </div>
-            <div class="wire-col">
-              <div class="wire-label">LO</div>
-              <input type="number" id="s-lo" placeholder="lo" step="0.001" style="width:70px" oninput="previewCompute()">
-            </div>
-          </div>
+
+        <div class="entry-row">
+          <label>Top</label>
+          <input type="number" id="entry-hi" placeholder="top wire" step="0.001" style="width: 100%;">
         </div>
-        <div class="form-row">
-          <label>Pt ID</label>
-          <input type="text" id="s-ptid" placeholder="e.g. EU123" style="width:90px">
-          <label style="margin-left:6px">Desc</label>
-          <input type="text" id="s-desc" placeholder="description" style="flex:1">
+
+        <div class="entry-row">
+          <label>Mid</label>
+          <input type="number" id="entry-mid" placeholder="mid wire" step="0.001" style="width: 100%;" oninput="updateStadia()">
         </div>
-        <div class="form-row">
-          <div class="computed-preview" id="preview-out">—</div>
-          <button class="tb-btn primary" style="margin-left:auto" onclick="addShot()">Add Shot</button>
+
+        <div class="entry-row">
+          <label>Bot</label>
+          <input type="number" id="entry-lo" placeholder="bot wire" step="0.001" style="width: 100%;" oninput="updateStadia()">
         </div>
+
+        <div id="entry-stadia" class="entry-status">Stadia: —</div>
+
+        <button class="tb-btn primary" style="width: 100%; margin-top: 8px" onclick="addRapidShot()">Enter Shot [Enter]</button>
       </div>
 
-      <!-- 1-Wire tab -->
-      <div id="tab-1wire" class="hidden">
-        <div class="form-row">
-          <label>Type</label>
-          <select id="s1-type" style="width:60px">
-            <option>BS</option>
-            <option>FS</option>
-            <option>SS</option>
-            <option>TP</option>
-          </select>
-          <label style="margin-left:6px">Dist</label>
-          <input type="number" id="s1-dist" placeholder="ft" style="width:60px" step="0.1">
-          <label style="margin-left:6px">Flag</label>
-          <select id="s1-flag" style="width:68px">
-            <option value="">—</option>
-            <option>GOOD</option>
-            <option>BAD</option>
-            <option>CHECK</option>
-          </select>
-        </div>
-        <div class="form-row">
-          <label>Rod</label>
-          <input type="number" id="s1-mid" placeholder="reading" step="0.001" style="width:90px">
-          <label style="margin-left:6px">Pt ID</label>
-          <input type="text" id="s1-ptid" placeholder="e.g. EU123" style="width:80px">
-        </div>
-        <div class="form-row">
-          <label>Desc</label>
-          <input type="text" id="s1-desc" placeholder="description" style="flex:1">
-          <button class="tb-btn primary" style="margin-left:6px" onclick="add1WireShot()">Add</button>
-        </div>
-      </div>
-
-      <!-- Set BM tab -->
-      <div id="tab-bm" class="hidden">
-        <div class="form-row">
-          <label>Pt ID</label>
-          <input type="text" id="bm-id" placeholder="e.g. NAIL UP 50/1S" style="flex:1">
-        </div>
-        <div class="form-row">
-          <label>Elev</label>
-          <input type="number" id="bm-elev" placeholder="NAVD88" step="0.001" style="width:110px">
-          <label style="margin-left:6px">Source</label>
-          <select id="bm-source" style="flex:1">
-            <option>NAVD88 published</option>
-            <option>GPS+LS</option>
-            <option>Leveled</option>
-            <option>Estimated</option>
-            <option>2009 run</option>
-            <option>Legacy</option>
-          </select>
-        </div>
-        <div class="form-row">
-          <label>Desc</label>
-          <input type="text" id="bm-desc" placeholder="Monument description" style="flex:1">
-        </div>
-        <div class="form-row">
-          <label>Coord</label>
-          <input type="text" id="bm-lat" placeholder="lat" style="width:100px">
-          <input type="text" id="bm-lon" placeholder="lon" style="width:110px; margin-left:4px">
-          <button class="tb-btn" style="margin-left:6px;font-size:12px;padding:3px 8px" title="Pick from map" onclick="openCoordPicker('bm')">📍</button>
-        </div>
-        <div class="form-row">
-          <label>Vel</label>
-          <input type="number" id="bm-vel" placeholder="mm/yr CORS" step="0.01" style="width:100px">
-          <label style="margin-left:6px;font-size:10px;color:var(--muted)">mm/yr vertical</label>
-          <button class="tb-btn primary" style="margin-left:auto" onclick="addBM()">Set BM</button>
-        </div>
-      </div>
+      <div class="shot-preview" id="shot-preview"></div>
     </div>
   </div>
 
@@ -892,6 +916,17 @@ let state = {
   _shotTab: '3wire'
 };
 
+// ═══════════════════════════════════════════════════════
+//  RAPID ENTRY STATE
+// ═══════════════════════════════════════════════════════
+let rapidEntry = {
+  bsPointId: null,
+  bsPointElev: null,
+  shots: [],
+  lastType2Index: -1,  // index of last type 2 shot for HI calculation
+  inBSSelection: false
+};
+
 let netTransform = { x: 0, y: 0, scale: 1 };
 let netDrag = null;
 let nodeDrag = null;
@@ -924,6 +959,174 @@ function intervalCheck(hi, mid, lo) {
 function fmt(v, d=3) {
   if (v == null || isNaN(v)) return '—';
   return v.toFixed(d);
+}
+
+// ═══════════════════════════════════════════════════════
+//  RAPID ENTRY SYSTEM
+// ═══════════════════════════════════════════════════════
+function startBSSelection() {
+  if (!state._activeRunId) {
+    alert('Create or select a run first');
+    return;
+  }
+  rapidEntry.inBSSelection = true;
+  rapidEntry.bsPointId = null;
+  document.getElementById('bs-select-btn').textContent = 'Selecting... click point on network';
+  document.getElementById('bs-select-btn').disabled = true;
+  setStatus('Click a point on the network diagram to select backsight');
+}
+
+function selectBSFromNetwork(ptId) {
+  if (!rapidEntry.inBSSelection) return;
+  const pt = state.points[ptId];
+  if (!pt) return;
+  
+  rapidEntry.bsPointId = ptId;
+  rapidEntry.bsPointElev = pt.elev || pt.elev_raw;
+  rapidEntry.shots = [];
+  rapidEntry.lastType2Index = -1;
+  
+  const status = `BS: ${ptId} (${fmt(rapidEntry.bsPointElev)})`;
+  document.getElementById('bs-status').textContent = status;
+  document.getElementById('bs-status').classList.add('ok');
+  document.getElementById('bs-select-btn').textContent = `✓ ${status}`;
+  document.getElementById('bs-select-btn').classList.add('selected');
+  document.getElementById('bs-select-btn').disabled = true;
+  
+  document.getElementById('entry-form').style.display = 'flex';
+  document.getElementById('entry-type').focus();
+  
+  rapidEntry.inBSSelection = false;
+  setStatus('Ready for rapid entry');
+}
+
+function validateShotSequence() {
+  const typeVal = document.getElementById('entry-type').value;
+  if (!typeVal) return;
+  
+  const type = parseInt(typeVal);
+  let error = null;
+  
+  if (rapidEntry.shots.length === 0) {
+    // First shot must be type 1
+    if (type !== 1) {
+      error = 'First shot must be type 1 (Backsight)';
+    }
+  } else {
+    const lastShot = rapidEntry.shots[rapidEntry.shots.length - 1];
+    const lastType = lastShot.type;
+    
+    if (type === 1) {
+      // Type 1 requires previous type 2
+      if (lastType !== 2) {
+        error = 'Type 1 (BS) requires previous Type 2 (FS-TP)';
+      }
+    } else if (type === 2) {
+      // Type 2 requires previous type 1
+      if (lastType !== 1 && !(rapidEntry.shots.length > 0 && rapidEntry.shots.some((s, i) => i > 0 && s.type === 1))) {
+        // More precise: type 2 can only come after 1, or after 3 if 1 came before
+        const hasType1Before = rapidEntry.shots.some(s => s.type === 1);
+        if (!hasType1Before) {
+          error = 'Type 2 (FS-TP) requires prior Type 1 (BS)';
+        }
+      }
+    } else if (type === 3 || type === 4 || type === 5 || type === 6) {
+      // Type 3+ only allowed after type 1, before type 2
+      if (lastType === 2) {
+        error = 'Type 3+ (sideshot) requires new setup first (Type 1)';
+      }
+    }
+  }
+  
+  const statusEl = document.getElementById('entry-stadia');
+  if (error) {
+    statusEl.textContent = `ERROR: ${error}`;
+    statusEl.classList.remove('ok');
+    statusEl.classList.add('error');
+  } else {
+    statusEl.textContent = `OK`;
+    statusEl.classList.remove('error');
+    statusEl.classList.add('ok');
+  }
+}
+
+function updateStadia() {
+  const hi = parseFloat(document.getElementById('entry-hi').value);
+  const lo = parseFloat(document.getElementById('entry-lo').value);
+  
+  let stadia = '—';
+  if (!isNaN(hi) && !isNaN(lo)) {
+    stadia = fmt((hi - lo) * 100, 2);
+  }
+  document.getElementById('entry-stadia').textContent = `Stadia: ${stadia} ft`;
+}
+
+function addRapidShot() {
+  const typeVal = document.getElementById('entry-type').value;
+  const hi = parseFloat(document.getElementById('entry-hi').value);
+  const mid = parseFloat(document.getElementById('entry-mid').value);
+  const lo = parseFloat(document.getElementById('entry-lo').value);
+  
+  if (!typeVal || isNaN(hi) || isNaN(mid) || isNaN(lo)) {
+    alert('All fields required');
+    return;
+  }
+  
+  const type = parseInt(typeVal);
+  validateShotSequence();
+  
+  const statusEl = document.getElementById('entry-stadia');
+  if (statusEl.classList.contains('error')) {
+    alert(statusEl.textContent);
+    return;
+  }
+  
+  // Create shot object
+  const shot = {
+    id: uid(),
+    type,
+    wires: [hi, mid, lo],
+    ptid: '',
+    desc: ''
+  };
+  
+  if (type === 2) {
+    rapidEntry.lastType2Index = rapidEntry.shots.length;
+  }
+  
+  rapidEntry.shots.push(shot);
+  
+  // Update display
+  updateShotPreview();
+  
+  // Clear inputs and move to next
+  document.getElementById('entry-type').value = '';
+  document.getElementById('entry-hi').value = '';
+  document.getElementById('entry-mid').value = '';
+  document.getElementById('entry-lo').value = '';
+  document.getElementById('shot-num').textContent = (rapidEntry.shots.length + 1);
+  document.getElementById('entry-stadia').textContent = 'Stadia: —';
+  document.getElementById('entry-stadia').classList.remove('ok', 'error');
+  
+  document.getElementById('entry-type').focus();
+  setStatus(`Shot ${rapidEntry.shots.length} added`);
+}
+
+function updateShotPreview() {
+  const previewEl = document.getElementById('shot-preview');
+  let html = '';
+  
+  for (let i = 0; i < rapidEntry.shots.length; i++) {
+    const s = rapidEntry.shots[i];
+    const typeNames = ['', 'BS', 'FS-TP', 'SS', 'HYDRANT', 'BOUND', 'TP'];
+    const dist = (s.wires[0] - s.wires[2]) * 100;
+    html += `<div class="shot-preview-item">
+      ${i + 1}. <span class="type-tag" style="color: ${['','#7ab8ff','#7adfa0','#d4c070','#ff9060','#c07ad4','#ff6b9d'][s.type]}">${typeNames[s.type]}</span> 
+      ${fmt(s.wires[0])}, ${fmt(s.wires[1])}, ${fmt(s.wires[2])} — ${fmt(dist, 2)}ft
+    </div>`;
+  }
+  
+  previewEl.innerHTML = html || '<div class="shot-preview-item" style="color: var(--muted);">No shots yet</div>';
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1884,6 +2087,30 @@ function closeModal(id) {
 document.querySelectorAll('.modal-overlay').forEach(overlay => {
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) overlay.classList.add('hidden');
+  });
+});
+
+// Rapid entry keyboard handlers
+document.addEventListener('DOMContentLoaded', () => {
+  const entryFields = ['entry-type', 'entry-hi', 'entry-mid', 'entry-lo'];
+  const fieldOrder = ['entry-type', 'entry-hi', 'entry-mid', 'entry-lo'];
+  
+  entryFields.forEach((fieldId, idx) => {
+    const field = document.getElementById(fieldId);
+    if (!field) return;
+    
+    field.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (idx < fieldOrder.length - 1) {
+          // Move to next field
+          document.getElementById(fieldOrder[idx + 1]).focus();
+        } else {
+          // Submit shot
+          addRapidShot();
+        }
+      }
+    });
   });
 });
 
