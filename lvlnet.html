@@ -721,6 +721,16 @@
 
         <div id="entry-stadia" class="entry-status">Stadia: —</div>
 
+        <div class="entry-row">
+          <label>Pt ID</label>
+          <input type="text" id="entry-ptid" placeholder="point ID" style="width: 100%;">
+        </div>
+
+        <div class="entry-row">
+          <label>Desc</label>
+          <input type="text" id="entry-desc" placeholder="description" style="width: 100%;">
+        </div>
+
         <button class="tb-btn primary" style="width: 100%; margin-top: 8px" onclick="addRapidShot()">Enter Shot [Enter]</button>
       </div>
 
@@ -1068,9 +1078,11 @@ function addRapidShot() {
   const hi = parseFloat(document.getElementById('entry-hi').value);
   const mid = parseFloat(document.getElementById('entry-mid').value);
   const lo = parseFloat(document.getElementById('entry-lo').value);
+  const ptid = document.getElementById('entry-ptid').value.trim();
+  const desc = document.getElementById('entry-desc').value.trim();
   
   if (!typeVal || isNaN(hi) || isNaN(mid) || isNaN(lo)) {
-    alert('All fields required');
+    alert('Type and all wire readings required');
     return;
   }
   
@@ -1088,8 +1100,8 @@ function addRapidShot() {
     id: uid(),
     type,
     wires: [hi, mid, lo],
-    ptid: '',
-    desc: ''
+    ptid: ptid || '',
+    desc: desc || ''
   };
   
   if (type === 2) {
@@ -1106,6 +1118,8 @@ function addRapidShot() {
   document.getElementById('entry-hi').value = '';
   document.getElementById('entry-mid').value = '';
   document.getElementById('entry-lo').value = '';
+  document.getElementById('entry-ptid').value = '';
+  document.getElementById('entry-desc').value = '';
   document.getElementById('shot-num').textContent = (rapidEntry.shots.length + 1);
   document.getElementById('entry-stadia').textContent = 'Stadia: —';
   document.getElementById('entry-stadia').classList.remove('ok', 'error');
@@ -1123,9 +1137,10 @@ function updateShotPreview() {
     const s = rapidEntry.shots[i];
     const typeNames = ['', 'BS', 'FS-TP', 'SS', 'HYDRANT', 'BOUND', 'TP'];
     const dist = (s.wires[0] - s.wires[2]) * 100;
+    const ptDisplay = s.ptid ? `(${s.ptid})` : '(no ID)';
     html += `<div class="shot-preview-item">
       ${i + 1}. <span class="type-tag" style="color: ${['','#7ab8ff','#7adfa0','#d4c070','#ff9060','#c07ad4','#ff6b9d'][s.type]}">${typeNames[s.type]}</span> 
-      ${fmt(s.wires[0])}, ${fmt(s.wires[1])}, ${fmt(s.wires[2])} — ${fmt(dist, 2)}ft
+      ${fmt(s.wires[0])}, ${fmt(s.wires[1])}, ${fmt(s.wires[2])} — ${fmt(dist, 2)}ft ${ptDisplay}
     </div>`;
   }
   
@@ -1142,7 +1157,82 @@ function saveShotsToRun() {
     return;
   }
   
-  // Map rapid entry shots to run shot format
+  let currentHI = null;
+  const rc = rodCorr(run);
+  
+  // First pass: calculate elevations and create points
+  for (let i = 0; i < rapidEntry.shots.length; i++) {
+    const shot = rapidEntry.shots[i];
+    const hi = shot.wires[0];
+    const mid = shot.wires[1];
+    const lo = shot.wires[2];
+    const dist = (hi - lo) * 100;
+    const corrFactor = 1 + rc * dist / 100;
+    const correctedMid = mid * corrFactor;
+    const ptid = shot.ptid;
+    
+    if (shot.type === 1) {
+      // BS: establish HI from backsight point
+      if (i === 0) {
+        // First shot: use selected BS point elevation
+        currentHI = rapidEntry.bsPointElev + correctedMid;
+      } else {
+        // Subsequent BS: use previous TP elevation
+        const prevTP = rapidEntry.shots.slice(0, i).reverse().find(s => s.type === 2);
+        if (prevTP && state.points[prevTP.ptid]) {
+          currentHI = state.points[prevTP.ptid].elev + correctedMid;
+        }
+      }
+    } else if (shot.type === 2) {
+      // FS-TP: create point at this elevation
+      if (currentHI !== null) {
+        const elev = currentHI - correctedMid;
+        if (ptid) {
+          if (!state.points[ptid]) {
+            state.points[ptid] = {
+              id: ptid,
+              desc: shot.desc || '',
+              constrained: false,
+              elev: elev,
+              elev_source: `Run: ${run.name}`,
+              elev_raw: elev,
+              elev_raw_count: 1,
+              lat: null,
+              lon: null,
+              velocity: null,
+              notes: '',
+              aliases: []
+            };
+          }
+        }
+      }
+    } else if (shot.type === 3 || shot.type === 4 || shot.type === 5 || shot.type === 6) {
+      // SS: create point at this elevation
+      if (currentHI !== null) {
+        const elev = currentHI - correctedMid;
+        if (ptid) {
+          if (!state.points[ptid]) {
+            state.points[ptid] = {
+              id: ptid,
+              desc: shot.desc || '',
+              constrained: false,
+              elev: elev,
+              elev_source: `Run: ${run.name}`,
+              elev_raw: elev,
+              elev_raw_count: 1,
+              lat: null,
+              lon: null,
+              velocity: null,
+              notes: '',
+              aliases: []
+            };
+          }
+        }
+      }
+    }
+  }
+  
+  // Second pass: add shots to run
   for (const shot of rapidEntry.shots) {
     const shotData = {
       id: shot.id,
@@ -2185,10 +2275,9 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
 
 // Rapid entry keyboard handlers
 document.addEventListener('DOMContentLoaded', () => {
-  const entryFields = ['entry-type', 'entry-hi', 'entry-mid', 'entry-lo'];
-  const fieldOrder = ['entry-type', 'entry-hi', 'entry-mid', 'entry-lo'];
+  const fieldOrder = ['entry-type', 'entry-hi', 'entry-mid', 'entry-lo', 'entry-ptid', 'entry-desc'];
   
-  entryFields.forEach((fieldId, idx) => {
+  fieldOrder.forEach((fieldId, idx) => {
     const field = document.getElementById(fieldId);
     if (!field) return;
     
