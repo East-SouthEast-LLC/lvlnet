@@ -905,13 +905,42 @@
       <option>2009 run</option>
       <option>Legacy</option>
     </select></div>
-    <div class="modal-row"><label>Latitude</label><input id="ap-lat" type="text" placeholder="decimal degrees"><button class="tb-btn" style="margin-left:6px;padding:2px 8px;font-size:11px" onclick="openCoordPicker('ap')">📍 Pick</button></div>
+    <div class="modal-row"><label>Latitude</label><input id="ap-lat" type="text" placeholder="decimal degrees"></div>
     <div class="modal-row"><label>Longitude</label><input id="ap-lon" type="text" placeholder="decimal degrees"></div>
     <div class="modal-row"><label>Constrained</label><input id="ap-constrained" type="checkbox"></div>
     <div class="modal-row"><label>Notes</label><textarea id="ap-notes" style="height:60px"></textarea></div>
     <div class="modal-actions">
       <button class="tb-btn" onclick="closeModal('add-point-modal')">Cancel</button>
       <button class="tb-btn primary" onclick="createPoint()">Add Point</button>
+    </div>
+  </div>
+</div>
+
+<!-- DOS ENTRY MODAL -->
+<div class="modal-overlay hidden" id="dos-entry-modal" style="align-items:center;justify-content:center;background:rgba(0,0,0,0.85);">
+  <div style="background:#0a0e1a;border:2px solid var(--accent);border-radius:6px;width:560px;max-width:95vw;font-family:var(--mono);display:flex;flex-direction:column;overflow:hidden;">
+    <!-- title bar -->
+    <div style="background:var(--accent);color:#000;font-weight:700;font-size:12px;padding:4px 12px;display:flex;justify-content:space-between;align-items:center;">
+      <span>LVLNET — SHOT ENTRY</span>
+      <span id="dos-shot-counter" style="font-size:11px;">SHOT #1</span>
+    </div>
+    <!-- shot log -->
+    <div id="dos-log" style="padding:8px 12px;min-height:80px;max-height:160px;overflow-y:auto;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border);"></div>
+    <!-- hint bar -->
+    <div id="dos-hint" style="padding:6px 12px;font-size:11px;color:var(--accent2);border-bottom:1px solid var(--border);min-height:24px;"></div>
+    <!-- prompt line -->
+    <div style="display:flex;align-items:center;padding:10px 12px;gap:8px;">
+      <span id="dos-prompt-label" style="color:var(--accent);font-size:12px;white-space:nowrap;min-width:180px;"></span>
+      <input id="dos-input" type="text" autocomplete="off" spellcheck="false"
+        style="flex:1;background:transparent;border:none;border-bottom:1px solid var(--accent);color:#fff;font-family:var(--mono);font-size:14px;outline:none;padding:2px 4px;">
+      <span style="color:var(--muted);font-size:11px;">↵ Enter</span>
+    </div>
+    <!-- stadia / live feedback -->
+    <div id="dos-stadia" style="padding:2px 12px 8px;font-size:11px;color:var(--muted);min-height:18px;"></div>
+    <!-- footer -->
+    <div style="padding:6px 12px;font-size:10px;color:var(--muted);border-top:1px solid var(--border);display:flex;justify-content:space-between;">
+      <span>-9 at any prompt = finish &amp; save</span>
+      <button class="tb-btn" style="font-size:10px;padding:2px 8px;" onclick="closeDosEntry()">✕ Cancel</button>
     </div>
   </div>
 </div>
@@ -1037,6 +1066,9 @@ function selectBSFromNetwork(ptId) {
   
   rapidEntry.inBSSelection = false;
   setStatus('Ready for rapid entry');
+
+  // Open DOS keyboard entry modal
+  openDosEntry();
 }
 
 function validateShotSequence() {
@@ -2338,6 +2370,7 @@ function closeModal(id) {
 
 // Close modal on overlay click
 document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  if (overlay.id === 'dos-entry-modal') return; // no accidental dismiss
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) overlay.classList.add('hidden');
   });
@@ -2496,13 +2529,188 @@ let _coordPickerMarker = null;
 let _coordPickerTarget = null; // 'bm' or 'ep'
 let _coordPickerResult = null;
 
+// ═══════════════════════════════════════════════════════
+//  DOS-STYLE KEYBOARD ENTRY MODAL
+// ═══════════════════════════════════════════════════════
+
+const dosEntry = {
+  step: 0,       // current field index
+  buf: {},       // accumulator for current shot
+  shots: [],     // committed shots (same as rapidEntry.shots mirror)
+};
+
+const DOS_FIELDS = [
+  {
+    id: 'type',
+    label: 'Type [1=BS  2=FS-TP  3=SS  4=HYD  5=BND  6=TP]:',
+    hint: '1 Backsight · 2 Foresight/TP · 3 Sideshot · 4 Hydrant · 5 Bound · 6 Turning Point',
+    validate(v) {
+      const n = parseInt(v);
+      if (![1,2,3,4,5,6].includes(n)) return 'Enter 1–6 or -9 to finish';
+      return null;
+    },
+    parse(v) { return parseInt(v); }
+  },
+  {
+    id: 'hi',
+    label: 'Top wire (ft):',
+    hint: 'Upper stadia hair reading',
+    validate(v) { if (isNaN(parseFloat(v))) return 'Enter a number'; return null; },
+    parse(v) { return parseFloat(v); }
+  },
+  {
+    id: 'mid',
+    label: 'Mid wire (ft):',
+    hint: 'Center crosshair — rod reading used for elevation',
+    validate(v) { if (isNaN(parseFloat(v))) return 'Enter a number'; return null; },
+    parse(v) { return parseFloat(v); }
+  },
+  {
+    id: 'lo',
+    label: 'Bot wire (ft):',
+    hint: 'Lower stadia hair reading',
+    validate(v) { if (isNaN(parseFloat(v))) return 'Enter a number'; return null; },
+    parse(v) { return parseFloat(v); }
+  },
+  {
+    id: 'ptid',
+    label: 'Pt ID (blank=none):',
+    hint: 'Point identifier — press Enter to skip',
+    validate() { return null; },
+    parse(v) { return v.trim(); }
+  },
+  {
+    id: 'desc',
+    label: 'Description (blank=none):',
+    hint: 'Free text description — Enter to skip and commit shot',
+    validate() { return null; },
+    parse(v) { return v.trim(); }
+  },
+];
+
+function openDosEntry() {
+  dosEntry.step = 0;
+  dosEntry.buf = {};
+  dosEntry.shots = [];
+  document.getElementById('dos-log').innerHTML = '';
+  document.getElementById('dos-stadia').textContent = '';
+  document.getElementById('dos-entry-modal').classList.remove('hidden');
+  dosPrompt();
+  document.getElementById('dos-input').focus();
+}
+
+function closeDosEntry() {
+  document.getElementById('dos-entry-modal').classList.add('hidden');
+}
+
+function dosPrompt() {
+  const f = DOS_FIELDS[dosEntry.step];
+  const shotNum = dosEntry.shots.length + 1;
+  document.getElementById('dos-shot-counter').textContent = `SHOT #${shotNum}`;
+  document.getElementById('dos-prompt-label').textContent = f.label;
+  document.getElementById('dos-hint').textContent = f.hint;
+  document.getElementById('dos-input').value = '';
+  document.getElementById('dos-input').focus();
+}
+
+function dosLogLine(text, color) {
+  const log = document.getElementById('dos-log');
+  const d = document.createElement('div');
+  d.style.color = color || 'var(--muted)';
+  d.textContent = text;
+  log.appendChild(d);
+  log.scrollTop = log.scrollHeight;
+}
+
+function dosCommitShot() {
+  const b = dosEntry.buf;
+  const shot = {
+    id: uid(),
+    type: b.type,
+    wires: [b.hi, b.mid, b.lo],
+    ptid: b.ptid || '',
+    desc: b.desc || ''
+  };
+
+  // mirror into rapidEntry so saveShotsToRun() works unchanged
+  if (shot.type === 2) rapidEntry.lastType2Index = rapidEntry.shots.length;
+  rapidEntry.shots.push(shot);
+  dosEntry.shots.push(shot);
+
+  const typeNames = ['','BS','FS-TP','SS','HYD','BND','TP'];
+  const dist = (b.hi - b.lo) * 100;
+  const ptTag = b.ptid ? ` (${b.ptid})` : '';
+  dosLogLine(
+    `  ${dosEntry.shots.length}. ${typeNames[b.type]}  ${fmt(b.hi)}, ${fmt(b.mid)}, ${fmt(b.lo)}  ${fmt(dist,1)}ft${ptTag}`,
+    'var(--text)'
+  );
+
+  updateShotPreview(); // keep sidebar in sync
+
+  dosEntry.step = 0;
+  dosEntry.buf = {};
+  document.getElementById('dos-stadia').textContent = '';
+  dosPrompt();
+}
+
+function dosFinish() {
+  closeDosEntry();
+  if (rapidEntry.shots.length > 0) {
+    saveShotsToRun();
+  } else {
+    setStatus('No shots entered');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const inp = document.getElementById('dos-input');
+
+  inp.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+
+    const raw = inp.value.trim();
+
+    // -9 at any point = finish
+    if (raw === '-9') {
+      dosFinish();
+      return;
+    }
+
+    const f = DOS_FIELDS[dosEntry.step];
+    const err = f.validate(raw);
+    if (err) {
+      document.getElementById('dos-hint').textContent = '⚠ ' + err;
+      inp.value = '';
+      return;
+    }
+
+    dosEntry.buf[f.id] = f.parse(raw);
+
+    // live stadia after bot wire
+    if (f.id === 'lo') {
+      const dist = (dosEntry.buf.hi - dosEntry.buf.lo) * 100;
+      document.getElementById('dos-stadia').textContent =
+        `Stadia: ${fmt(dist, 1)} ft`;
+    }
+
+    if (dosEntry.step < DOS_FIELDS.length - 1) {
+      dosEntry.step++;
+      dosPrompt();
+    } else {
+      // last field (desc) — commit
+      dosCommitShot();
+    }
+  });
+});
+
 function openCoordPicker(target) {
   _coordPickerTarget = target;
   _coordPickerResult = null;
 
   // Seed map center from existing lat/lon fields if present
-  const latId = target === 'bm' ? 'bm-lat' : target === 'ap' ? 'ap-lat' : 'ep-lat';
-  const lonId = target === 'bm' ? 'bm-lon' : target === 'ap' ? 'ap-lon' : 'ep-lon';
+  const latId = target === 'bm' ? 'bm-lat' : 'ep-lat';
+  const lonId = target === 'bm' ? 'bm-lon' : 'ep-lon';
   const existLat = parseFloat(document.getElementById(latId).value);
   const existLon = parseFloat(document.getElementById(lonId).value);
   const center = (!isNaN(existLat) && !isNaN(existLon))
@@ -2554,8 +2762,8 @@ function onCoordMapClick(e) {
 
 function confirmCoordPick() {
   if (!_coordPickerResult) return;
-  const latId = _coordPickerTarget === 'bm' ? 'bm-lat' : _coordPickerTarget === 'ap' ? 'ap-lat' : 'ep-lat';
-  const lonId = _coordPickerTarget === 'bm' ? 'bm-lon' : _coordPickerTarget === 'ap' ? 'ap-lon' : 'ep-lon';
+  const latId = _coordPickerTarget === 'bm' ? 'bm-lat' : 'ep-lat';
+  const lonId = _coordPickerTarget === 'bm' ? 'bm-lon' : 'ep-lon';
   document.getElementById(latId).value = _coordPickerResult.lat.toFixed(7);
   document.getElementById(lonId).value = _coordPickerResult.lon.toFixed(7);
   closeModal('coord-picker-modal');
