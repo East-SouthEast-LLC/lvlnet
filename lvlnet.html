@@ -725,6 +725,8 @@
       </div>
 
       <div class="shot-preview" id="shot-preview"></div>
+
+      <button class="tb-btn primary" style="width: 100%; margin-top: 12px; display: none;" id="save-shots-btn" onclick="saveShotsToRun()">✓ Save Shots to Run</button>
     </div>
   </div>
 
@@ -1114,6 +1116,7 @@ function addRapidShot() {
 
 function updateShotPreview() {
   const previewEl = document.getElementById('shot-preview');
+  const saveBtn = document.getElementById('save-shots-btn');
   let html = '';
   
   for (let i = 0; i < rapidEntry.shots.length; i++) {
@@ -1127,6 +1130,49 @@ function updateShotPreview() {
   }
   
   previewEl.innerHTML = html || '<div class="shot-preview-item" style="color: var(--muted);">No shots yet</div>';
+  
+  // Show save button if shots exist
+  saveBtn.style.display = rapidEntry.shots.length > 0 ? 'block' : 'none';
+}
+
+function saveShotsToRun() {
+  const run = state.runs.find(r => r.id === state._activeRunId);
+  if (!run) {
+    alert('No active run');
+    return;
+  }
+  
+  // Map rapid entry shots to run shot format
+  for (const shot of rapidEntry.shots) {
+    const shotData = {
+      id: shot.id,
+      type: shot.type === 1 ? 'BS' : shot.type === 2 ? 'FS' : 'SS',
+      wires: shot.wires,
+      point_id: shot.ptid || null,
+      desc: shot.desc || ''
+    };
+    run.shots.push(shotData);
+  }
+  
+  // Reset rapid entry
+  rapidEntry = {
+    bsPointId: null,
+    bsPointElev: null,
+    shots: [],
+    lastType2Index: -1,
+    inBSSelection: false
+  };
+  
+  document.getElementById('bs-select-btn').textContent = '1. Click to Select Backsight Point';
+  document.getElementById('bs-select-btn').classList.remove('selected');
+  document.getElementById('bs-select-btn').disabled = false;
+  document.getElementById('bs-status').textContent = 'No backsight selected';
+  document.getElementById('bs-status').classList.remove('ok');
+  document.getElementById('entry-form').style.display = 'none';
+  document.getElementById('shot-preview').innerHTML = '';
+  
+  setStatus(`Saved ${run.shots.length} shots to run`);
+  renderAll();
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1336,6 +1382,7 @@ function renderShots() {
     empty.style.display = '';
     tableWrap.style.display = 'none';
     tbody.innerHTML = '';
+    document.getElementById('entry-section').classList.remove('active');
     return;
   }
   empty.style.display = 'none';
@@ -1742,11 +1789,39 @@ function startNodeDrag(e, ptid) {
 // ═══════════════════════════════════════════════════════
 function selectRun(id) {
   state._activeRunId = id;
+  
+  // Reset rapid entry when switching runs
+  rapidEntry = {
+    bsPointId: null,
+    bsPointElev: null,
+    shots: [],
+    lastType2Index: -1,
+    inBSSelection: false
+  };
+  
+  // Reset BS button
+  document.getElementById('bs-select-btn').textContent = '1. Click to Select Backsight Point';
+  document.getElementById('bs-select-btn').classList.remove('selected');
+  document.getElementById('bs-select-btn').disabled = false;
+  document.getElementById('bs-status').textContent = 'No backsight selected';
+  document.getElementById('bs-status').classList.remove('ok');
+  document.getElementById('entry-form').style.display = 'none';
+  document.getElementById('shot-preview').innerHTML = '';
+  
+  // Show entry section
+  document.getElementById('entry-section').classList.add('active');
+  
   renderRuns();
   renderShots();
 }
 
 function selectPoint(id) {
+  // Check if we're in BS selection mode
+  if (rapidEntry.inBSSelection) {
+    selectBSFromNetwork(id);
+    return;
+  }
+  
   state._selectedPtId = id;
   renderPoints();
   renderNetwork();
@@ -2075,6 +2150,24 @@ function createRun() {
 
   state.runs.push(run);
   state._activeRunId = run.id;
+  
+  // Initialize rapid entry UI
+  rapidEntry = {
+    bsPointId: null,
+    bsPointElev: null,
+    shots: [],
+    lastType2Index: -1,
+    inBSSelection: false
+  };
+  document.getElementById('bs-select-btn').textContent = '1. Click to Select Backsight Point';
+  document.getElementById('bs-select-btn').classList.remove('selected');
+  document.getElementById('bs-select-btn').disabled = false;
+  document.getElementById('bs-status').textContent = 'No backsight selected';
+  document.getElementById('bs-status').classList.remove('ok');
+  document.getElementById('entry-form').style.display = 'none';
+  document.getElementById('shot-preview').innerHTML = '';
+  document.getElementById('entry-section').classList.add('active');
+  
   closeModal('run-modal');
   renderAll();
 }
